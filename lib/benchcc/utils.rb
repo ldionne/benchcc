@@ -1,5 +1,6 @@
 require 'delegate'
 
+
 # Indents a multiline string.
 # Copied from http://makandracards.com/makandra/6087-ruby-indent-a-string.
 String.class_eval do
@@ -13,6 +14,11 @@ String.class_eval do
       line
     end
   end
+end
+
+# Returns the basename of a file without the extension.
+def File.basename_we(filename)
+  File.basename(filename, File.extname(filename))
 end
 
 Array.class_eval do

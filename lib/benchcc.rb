@@ -1,5 +1,5 @@
+require "benchcc/benchmark"
+require "benchcc/benchmark_suite"
+require "benchcc/compiler"
+require "benchcc/technique"
 require "benchcc/version"
-
-module Benchcc
-  # Your code goes here...
-end
