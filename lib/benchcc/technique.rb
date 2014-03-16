@@ -7,6 +7,8 @@ require "tempfile"
 
 module Benchcc
   class Technique
+    extend Dsl
+
     # Creates a new technique with the given id and file.
     #
     # If a block is given, it is used to populate the other attributes of the
@@ -42,8 +44,8 @@ module Benchcc
     # env: Hash
     #   Contains all the informations.
     #
-    # env[:compiler]: Compiler
-    #   The compiler that's used to compile the benchmark.
+    # env[:compiler]: Symbol
+    #   The id of the compiler that's used to compile the benchmark.
     #
     # env[:input]: Integer
     #   The size of the input to whatever is being benchmarked.
@@ -123,7 +125,7 @@ module Benchcc
 
     def measure_anything(xs, cc, &block)
       xs = xs.to_a
-      envs = xs.map { |x| {:input => x, @id => true, :compiler => cc} }
+      envs = xs.map { |x| {:input => x, @id => true, :compiler => cc.id} }
       xs.zip(envs)
         .select { |x, e| self.enabled? e }
         .map    { |x, e| [x, block.call(e)] }

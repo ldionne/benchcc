@@ -8,6 +8,8 @@ require "gnuplot"
 
 module Benchcc
   class Benchmark
+    extend Dsl
+
     # Creates a new benchmark with the given id.
     #
     # If a block is given, it is used to populate the other attributes of
@@ -33,7 +35,10 @@ module Benchcc
     #
     # Optional pretty name of the benchmark. Defaults to a prettified
     # version of id.
-    dsl_accessor :name
+    def name(v=@name)
+      @name = v
+    end
+    # Benchcc.dsl_accessor :name
 
     # description: String (opt)
     #

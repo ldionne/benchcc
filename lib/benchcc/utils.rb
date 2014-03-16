@@ -45,21 +45,23 @@ Numeric.class_eval do
 end
 
 module Benchcc
-  # Creates a Docile-style setter for the given attributes.
-  def dsl_setter(*attrs)
-    attrs.map(&:to_s).each do |atr|
-      define_method(atr) do |value|
-        instance_variable_set('@' + atr, value)
+  module Dsl
+    # Creates a Docile-style setter for the given attributes.
+    def dsl_setter(*attrs)
+      attrs.map(&:to_s).each do |atr|
+        define_method(atr) do |value|
+          instance_variable_set('@' + atr, value)
+        end
       end
     end
-  end
 
-  # Same as dsl_setter, but the method may be called without arguments to
-  # simply retrieve the value of that attribute.
-  def dsl_accessor(*attrs)
-    attrs.map(&:to_s).each do |atr|
-      define_method(atr) do |value = instance_variable_get('@' + atr)|
-        instance_variable_set('@' + atr, value)
+    # Same as dsl_setter, but the method may be called without arguments to
+    # simply retrieve the value of that attribute.
+    def dsl_accessor(*attrs)
+      attrs.map(&:to_s).each do |atr|
+        define_method(atr) do |value = instance_variable_get('@' + atr)|
+          instance_variable_set('@' + atr, value)
+        end
       end
     end
   end

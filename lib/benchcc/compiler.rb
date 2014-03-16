@@ -11,8 +11,6 @@ module Benchcc
   class Compiler
     @@ccs = Hash.new
 
-    private_class_method :register
-
     # Compiler.register: Compiler -> Compiler
     #
     # Registers a compiler; this is done automatically when

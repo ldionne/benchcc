@@ -3,20 +3,21 @@ lib = File.expand_path('../lib', __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'benchcc/version'
 
-Gem::Specification.new do |spec|
-  spec.name          = "benchcc"
-  spec.version       = Benchcc::VERSION
-  spec.authors       = ["Louis Dionne"]
-  spec.email         = ["ldionne.2@gmail.com"]
-  spec.summary       = "A simple DSL for C++ compiler benchmarking automation"
-  spec.homepage      = ""
-  spec.license       = "MIT"
+Gem::Specification.new do |s|
+  s.name          = "benchcc"
+  s.version       = Benchcc::VERSION
+  s.authors       = ["Louis Dionne"]
+  s.email         = ["ldionne.2@gmail.com"]
+  s.summary       = "A simple DSL for C++ compiler benchmarking automation"
+  s.description   = s.summary
+  s.homepage      = "http://github.com/ldionne/benchcc"
+  s.license       = "MIT"
+  s.files         = `git ls-files -z`.split("\x0")
+  s.require_paths = ["lib"]
 
-  spec.files         = `git ls-files -z`.split("\x0")
-  spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
-  spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
-  spec.require_paths = ["lib"]
+  s.add_development_dependency "bundler", "~> 1.5"
+  s.add_development_dependency "rake", "~> 0"
 
-  spec.add_development_dependency "bundler", "~> 1.5"
-  spec.add_development_dependency "rake"
+  s.add_dependency "docile", "~> 1.1"
+  s.add_dependency "gnuplot", "~> 2.6"
 end
