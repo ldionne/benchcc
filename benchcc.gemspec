@@ -19,4 +19,5 @@ Gem::Specification.new do |s|
 
   s.add_dependency "docile", "~> 1.1"
   s.add_dependency "gnuplot", "~> 2.6"
+  s.add_dependency "trollop", "~> 2.0"
 end

@@ -1,98 +1,87 @@
-require "benchcc/utils"
-
-require "benchmark"
-
-
 module Benchcc
   class FailedCompilation < RuntimeError
 
   end
 
   class Compiler
-    @@ccs = Hash.new
-
-    # Compiler.register: Compiler -> Compiler
-    #
-    # Registers a compiler; this is done automatically when
-    # a compiler is created.
-    def self.register(compiler)
-      if self.registered? compiler.id
-        raise "Overwriting existing compiler #{compiler.id}."
-      end
-      @@ccs[compiler.id] = compiler
-    end
-
-    # Compiler.registered: [Compiler]
-    #
-    # Returns an array containing all the compilers that
-    # were created up to now.
-    def self.registered
-      @@ccs.values
-    end
-
-    # Compiler.registered?: Symbol -> Bool
-    #
-    # Returns whether a compiler id represents a registered compiler.
-    def self.registered?(compiler_id)
-      @@ccs.has_key? compiler_id
-    end
+    @@compilers = Hash.new
 
     # Compiler[]: Symbol -> Compiler
     #
     # Returns the Compiler object associated to the given compiler id.
     def self.[](compiler_id)
-      if !self.registered? compiler_id
-        raise "Unknown compiler #{compiler_id}."
+      if !@@compilers.has_key? compiler_id
+        raise ArgumentError, "Unknown compiler #{compiler_id}."
       end
-      @@ccs[compiler_id]
+      @@compilers[compiler_id]
     end
 
+    # Compiler.available?: Symbol -> Bool
+    #
+    # Returns whether the compiler with the given id is available.
+    def self.available?(compiler_id)
+      @@compilers.has_key? compiler_id
+    end
+
+    # Compiler.register: Compiler -> Nil
+    #
+    # Adds a compiler to the list of available compilers.
+    def self.register(compiler)
+      if @@compilers.has_key? compiler.id
+        raise ArgumentError, "Overwriting existing compiler #{compiler.id}."
+      end
+      @@compilers[compiler.id] = compiler
+    end
+
+    # Compiler.list: [Symbol]
+    #
+    # Returns the list of available compilers.
+    def self.list
+      @@compilers.keys
+    end
 
 
     # id: Symbol
     #
-    # A unique id representing a compiler.
+    # A unique id representing the compiler.
     attr_reader :id
 
-    # Creates a new compiler with the given id.
+    # Creates a new Compiler with the given id.
     #
-    # The (mandatory) block will be called with the name of a file to compile.
-    def initialize(id, &command)
-      raise "A command must be given." unless block_given?
-
+    # The block is mandatory and calling it with a filename should compile
+    # that file.
+    def initialize(id, &compile)
       @id = id
-      @cc = -> (filename) {
-        command.call(filename)
-        raise FailedCompilation.new unless $?.success?
-      }
-
+      @compile = compile
       Compiler.register(self)
     end
 
-    # compile: String -> Benchmark.Tms
-    #
-    # Measure the time taken to compile a file.
-    #
-    # First, the file is compiled a number of times (default 1) as a
-    # rehearsal. Then, the file is compiled again a number of times
-    # (default 3), during which the compilation time is recorded. The
-    # average of these last compilations is returned.
-    def compile(filename, repetitions: 3, rehearsals: 1)
-      rehearsals.times { @cc.call(filename) }
-
-      avg = repetitions.times
-                       .collect { ::Benchmark.measure { @cc.call(filename) } }
-                       .average
-      avg.instance_variable_set(:@label, @id)
-      avg
+    # Compile the given file.
+    def compile(file)
+      @compile.call(file)
+      raise FailedCompilation.new unless $?.success?
     end
   end # class Compiler
 
-  Compiler.new(:clang) do |filename|
-    `clang++-3.5 -std=c++11 -o /dev/null -I ~/code/mpl11/include -c #{filename}`
-  end
+  Compiler.new(:clang) { |file|
+    `clang++-3.5 -S #{file} -o /dev/null -I ~/code/mpl11/include -std=c++11`
+  }
 
-  Compiler.new(:gcc) do |filename|
-    `g++-4.9 -std=c++11 -o /dev/null -I ~/code/mpl11/include -c #{filename}`
-  end
+  Compiler.new(:gcc) { |file|
+    `g++-4.9 -S #{file} -o /dev/null -I ~/code/mpl11/include -std=c++11`
+  }
+
+  # Compiler.new(:clang) do |cc|
+  #   cc.cmd      = "clang++-3.5 -std=c++11"
+  #   cc.include_ = proc { |path| "-I #{path}" }
+  #   cc.output   = proc { |file| "-o #{file}" }
+  #   cc.input    = proc { |file| "-S #{file}" }
+  # end
+
+  # Compiler.new(:gcc) do |cc|
+  #   cc.cmd      = "g++-4.9 -std=c++11"
+  #   cc.include_ = proc { |path| "-I #{path}" }
+  #   cc.output   = proc { |file| "-o #{file}" }
+  #   cc.input    = proc { |file| "-S #{file}" }
+  # end
 end # module Benchcc

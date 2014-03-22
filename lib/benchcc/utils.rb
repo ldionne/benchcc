@@ -1,5 +1,8 @@
+require "benchmark"
 require "delegate"
+require "erb"
 require "pathname"
+require "tempfile"
 
 
 # Indents a multiline string.
@@ -17,7 +20,7 @@ String.class_eval do
   end
 end
 
-# Returns the basename of a file without the extension.
+# Returns the basename of a file without its last extension.
 def File.basename_we(filename)
   File.basename(filename, File.extname(filename))
 end
@@ -47,7 +50,8 @@ end
 
 Pathname.class_eval do
   def /(other)
-    self + other
+    other = other.to_s if other.kind_of? Symbol
+    self + Pathname.new(other)
   end
 end
 
@@ -70,6 +74,56 @@ module Benchcc
           instance_variable_set('@' + atr, value)
         end
       end
+    end
+  end
+
+  # time: Proc -> Benchmark.Tms
+  #
+  # Measure the time taken to call the given block.
+  #
+  # First, the block is called a number of times (default 1) as a rehearsal.
+  # Then, it is called again a number of times (default 3) while the time is
+  # recorded. The average of these last calls is returned.
+  def self.time(repetitions: 3, rehearsals: 1, &f)
+    raise ArgumentError, "A block must be given" unless block_given?
+
+    rehearsals.times { f.call }
+    repetitions.times
+               .collect { ::Benchmark.measure { f.call } }
+               .average
+  end
+
+  # erb_template?: Path -> Bool
+  #
+  # Returns whether a path likely represents an ERB template. Basically, we
+  # check whether the filename contains a .erb extension. The file may have
+  # several extensions (e.g. ".erb.html") as long as it has .erb somewhere.
+  def self.erb_template?(file)
+    File.fnmatch?("{*.erb.*,*.erb}", File.basename(file), File::FNM_EXTGLOB)
+  end
+
+  # configure: Pathname x Hash x Proc -> Result of Proc
+  #
+  # Call the given block with a path to a configured version of the
+  # given filename. If the filename represents an ERB template, it is
+  # generated with the given environment. Otherwise, it is yielded as-is.
+  def self.configure(filename, env)
+    unless File.file? filename
+      raise ArgumentError, "Inexistent filename \"#{filename}\""
+    end
+
+    if Benchcc.erb_template? filename
+      fresh = eval("-> (env) { proc {} }", TOPLEVEL_BINDING).call(env)
+      configured = ERB.new(File.read(filename))
+      configured.filename = filename
+      configured = configured.result(fresh.binding)
+
+      tmp = Tempfile.new([File.basename_we(filename), File.extname(filename)])
+      tmp.write(configured)
+      tmp.close # flushes the file
+      yield tmp.path
+    else
+      yield filename
     end
   end
 

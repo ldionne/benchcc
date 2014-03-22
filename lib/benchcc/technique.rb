@@ -1,9 +1,7 @@
+require "benchcc/compiler"
 require "benchcc/utils"
 
 require "docile"
-require "erb"
-require "pathname"
-require "tempfile"
 
 
 module Benchcc
@@ -18,10 +16,10 @@ module Benchcc
       @id = id
       @benchmark = benchmark
       @enabled = proc { true }
+      @modify_env = proc { |e| e }
 
       self.name        @id.to_s.gsub(/_/, ' ').capitalize
       self.description nil
-      self.input_file  @benchmark.input_file
       Docile.dsl_eval(self, &block) if block_given?
     end
 
@@ -43,30 +41,6 @@ module Benchcc
     # Optional description of the technique; defaults to nil.
     dsl_accessor :description
 
-    # input_file: Pathname
-    #
-    # Path of a file where the technique is implemented. This defaults to
-    # the input file of the parent benchmark. The extension of the file
-    # determines whether we treat it as a source file or as an ERB
-    # template from which the source should be generated.
-    #
-    # If the file is a template, the following variables are in scope when we
-    # evaluate the template:
-    #
-    # env: Hash
-    #   Contains all the informations.
-    #
-    # env[:compiler]: Symbol
-    #   The id of the compiler used to compile the benchmark.
-    #
-    # env[:input]: Integer
-    #   The size of the input to whatever is being benchmarked.
-    #
-    # env[technique_id]: true
-    def input_file(path = @infile)
-      @infile = Pathname.new(path)
-    end
-
     # requires: Proc -> Proc
     #
     # States that a predicate must be satisfied for the technique to be
@@ -76,9 +50,25 @@ module Benchcc
     #
     # The method returns the (complete) predicate that must be satisfied
     # for the technique to be enabled.
-    def requires(predicate)
+    def requires(&predicate)
+      raise ArgumentError, "No block given." unless block_given?
       tmp = @enabled.dup
       @enabled = -> (env) { tmp.call(env) and predicate.call(env) }
+    end
+
+    # env: Proc -> Nil
+    #
+    # Register a set of modifications to be performed on the environment
+    # before the technique is benchmarked. A block must be given; it will
+    # be called with the environment before the technique is benchmarked and
+    # it should return the environment to use for the benchmark. Many sets
+    # of modifications can be registered by calling this method several times.
+    # In this case, the modifications will be performed on the environment
+    # in their order of registration.
+    def env(&block)
+      raise ArgumentError, "A block must be given." unless block_given?
+      tmp = @modify_env.dup
+      @modify_env = -> (e) { block.call(tmp.call(e)) }
     end
 
     # enabled?: Hash -> bool
@@ -97,52 +87,27 @@ module Benchcc
       end
     end
 
-  private
-    def template_file?(filename)
-      File.fnmatch?("*.erb.*" , File.basename(filename))
-    end
-
-    def with(env, &block)
-      if disabled? env
-        raise "Technique is disabled in the current context."
-      end
-
-      if template_file? self.input_file
-        code = ERB.new(File.read(self.input_file))
-        code.filename = self.input_file
-        tmp = Tempfile.new(['', '.cpp'])
-
-        fresh_binding = eval("-> (env) { proc {} }", TOPLEVEL_BINDING)
-                                                        .call(env).binding
-        tmp.write(code.result(fresh_binding))
-        tmp.close # flushes the file
-
-        yield tmp.path
-      else
-        yield self.input_file
-      end
-    end
-
-    def measure_anything(xs, cc, &block)
-      xs = xs.to_a
-      envs = xs.map { |x| {:input => x, @id => true, :compiler => cc.id} }
-      xs.zip(envs)
-        .select { |x, e| self.enabled? e }
-        .map    { |x, e| [x, block.call(e)] }
-    end
-
-  public
-    # time: [Integers] x Compiler -> [Benchmark.Tms]
+    # time: [Integers] x Hash -> [Integer x Benchmark.Tms]
     #
-    # Time the compilation of this technique using the given compiler.
+    # Time the compilation of this technique with the given environment.
     #
-    # The :input key of the environment is set to each element in xs.
-    # Note that for any x in xs, if the environment generated with that
-    # x causes the technique to be disabled, then nothing is done.
-    def time(xs, compiler)
-      measure_anything(xs, compiler) do |env|
-          with(env, &compiler.method(:compile)).real
+    # The `xs` argument represents the range of inputs to time the compilation
+    # with. Note that the technique is only compiled when it is enabled. This
+    # method sets `env[:input]` to the current input size for each input size
+    # in `xs`, and `env[technique_id]` to true.
+    def time(xs, env)
+      results = []
+      env = env.merge({@id => true})
+      for x in xs
+        e = @modify_env.call(env.merge({:input => x}))
+        if self.enabled? e
+          y = Benchcc.configure(@benchmark.input_file, e) do |file|
+            Benchcc.time { Compiler[env[:compiler]].compile(file) }.real
+          end
+          results << [x, y]
+        end
       end
+      return results
     end
   end # class Technique
 end # module Benchcc
