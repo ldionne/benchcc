@@ -2,6 +2,7 @@ require "benchcc/utils"
 
 require "docile"
 require "erb"
+require "pathname"
 require "tempfile"
 
 
@@ -9,20 +10,19 @@ module Benchcc
   class Technique
     extend Dsl
 
-    # Creates a new technique with the given id and file.
+    # Creates a new technique with the given id in the specified benchmark.
     #
-    # If a block is given, it is used to populate the other attributes of the
-    # technique using Docile. Note that the file can either be set by passing
-    # it as an argument of by setting it in the block.
-    def initialize(id, file = nil, &block)
+    # If a block is given, it is used to populate the attributes of the
+    # technique using Docile.
+    def initialize(id, benchmark, &block)
       @id = id
-      @name = @id.to_s.gsub(/_/, ' ').capitalize
-      @file = file
-      @description = nil
+      @benchmark = benchmark
       @enabled = proc { true }
 
+      self.name        @id.to_s.gsub(/_/, ' ').capitalize
+      self.description nil
+      self.input_file  @benchmark.input_file
       Docile.dsl_eval(self, &block) if block_given?
-      raise "A file must be given." unless @file
     end
 
     # id: Symbol
@@ -31,29 +31,6 @@ module Benchcc
     # This must only contain characters that can appear in a path, since
     # the id might be used to create filenames.
     attr_reader :id
-
-    # file: String
-    #
-    # Name of file where the technique is implemented. The extension of
-    # the file determines whether we treat it as a source file or as a
-    # template from which the source should be generated.
-    #
-    #
-    # When the file is a template, the following variables are in scope:
-    #
-    # env: Hash
-    #   Contains all the informations.
-    #
-    # env[:compiler]: Symbol
-    #   The id of the compiler that's used to compile the benchmark.
-    #
-    # env[:input]: Integer
-    #   The size of the input to whatever is being benchmarked.
-    #
-    # env[@id]: Bool
-    #   env[@id] is set to true, where @id is the id of the
-    #   benchmarked technique.
-    dsl_setter :file
 
     # name: String (opt)
     #
@@ -65,6 +42,30 @@ module Benchcc
     #
     # Optional description of the technique; defaults to nil.
     dsl_accessor :description
+
+    # input_file: Pathname
+    #
+    # Path of a file where the technique is implemented. This defaults to
+    # the input file of the parent benchmark. The extension of the file
+    # determines whether we treat it as a source file or as an ERB
+    # template from which the source should be generated.
+    #
+    # If the file is a template, the following variables are in scope when we
+    # evaluate the template:
+    #
+    # env: Hash
+    #   Contains all the informations.
+    #
+    # env[:compiler]: Symbol
+    #   The id of the compiler used to compile the benchmark.
+    #
+    # env[:input]: Integer
+    #   The size of the input to whatever is being benchmarked.
+    #
+    # env[technique_id]: true
+    def input_file(path = @infile)
+      @infile = Pathname.new(path)
+    end
 
     # requires: Proc -> Proc
     #
@@ -90,10 +91,9 @@ module Benchcc
     # Negates the enabled? method; provided for convenience.
     def disabled?(env); !enabled? env; end
 
-
     def to_s
-      if @description then "#{@name}: #{@description}"
-                      else @name
+      if self.description then "#{self.name}: #{self.description}"
+                          else self.name
       end
     end
 
@@ -107,9 +107,9 @@ module Benchcc
         raise "Technique is disabled in the current context."
       end
 
-      if template_file? @file
-        code = ERB.new(File.read(@file))
-        code.filename = @file
+      if template_file? self.input_file
+        code = ERB.new(File.read(self.input_file))
+        code.filename = self.input_file
         tmp = Tempfile.new(['', '.cpp'])
 
         fresh_binding = eval("-> (env) { proc {} }", TOPLEVEL_BINDING)
@@ -119,7 +119,7 @@ module Benchcc
 
         yield tmp.path
       else
-        yield @file
+        yield self.input_file
       end
     end
 

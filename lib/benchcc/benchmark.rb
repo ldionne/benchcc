@@ -1,9 +1,11 @@
+require "benchcc/benchmark_suite"
 require "benchcc/compiler"
 require "benchcc/technique"
 require "benchcc/utils"
 
 require "docile"
 require "gnuplot"
+require "pathname"
 
 
 module Benchcc
@@ -12,18 +14,23 @@ module Benchcc
 
     # Creates a new benchmark with the given id.
     #
-    # If a block is given, it is used to populate the other attributes of
-    # the benchmark using Docile.
-    def initialize(id, &block)
+    # If a block is given, it is used to populate the attributes of the
+    # benchmark using Docile. If a parent benchmark suite is specified,
+    # it is used instead of the default benchmark suite.
+    def initialize(id, suite = BenchmarkSuite.new, &block)
       @id = id
-      @name = @id.to_s.gsub(/_/, ' ').capitalize
-      @description = nil
-      @file = nil
+      @suite = suite
       @tasks = []
       @techniques = Hash.new
-      @compilers = OnFirstShift.new(Compiler.registered.dup, &:clear)
+      @compilers = OnFirstShift.new(@suite.compilers.dup, &:clear)
 
+      self.name             @id.to_s.gsub(/_/, ' ').capitalize
+      self.description      nil
+      self.output_directory @suite.output_directory / @id.to_s
+      self.input_file       (@suite.input_directory / @id.to_s).sub_ext(".erb.cpp")
       Docile.dsl_eval(self, &block) if block_given?
+
+      @suite.register(self)
     end
 
     # id: Symbol
@@ -35,50 +42,68 @@ module Benchcc
     #
     # Optional pretty name of the benchmark. Defaults to a prettified
     # version of id.
-    def name(v=@name)
-      @name = v
-    end
-    # Benchcc.dsl_accessor :name
+    dsl_accessor :name
 
     # description: String (opt)
     #
     # Optional description of the benchmark. Defaults to nil.
     dsl_accessor :description
 
-    # technique: Symbol -> Technique
+    # output_directory: Pathname (opt)
     #
-    # Adds a technique to the benchmark. If a block is given, it is passed to
-    # Technique#initialize. The method returns the created technique.
-    #
-    # Note that the technique is created with the file of the benchmark, if
-    # any. Hence, techniques inherit the enclosing benchmark's file by default.
-    def technique(id, &block)
-      raise "Overwriting an existing technique." if @techniques[id]
-      @techniques[id] = Technique.new(id, @file, &block)
+    # Directory where the benchmark results should be stored. Defaults to
+    # `suite_output_directory/benchmark_id` if a suite was given on
+    # construction, and to `cwd/benchmark_id` otherwise.
+    def output_directory(path = @outdir)
+      @outdir = Pathname.new(path)
     end
 
-    # file: String (opt)
+    # input_file: Pathname (opt)
     #
-    # Name of a file where the benchmark is implemented. This is only passed
-    # down to the techniques created inside the benchmark.
-    dsl_setter :file
+    # File where the benchmark is implemented. Defaults to
+    # `suite_input_directory/benchmark_id.erb.cpp` if a suite was given
+    # on construction, and to `cwd/benchmark_id.erb.cpp` otherwise.
+    def input_file(path = @infile)
+      @infile = Pathname.new(path)
+    end
 
-    # compiler: Symbol -> [Compiler]
+    # technique: Symbol(s) (opt)
     #
-    # Adds a compiler to the set of compilers supported for the benchmark.
-    # By default, all registered compilers are supported; adding one or
-    # more compilers with this method will cause only those compilers to
-    # be supported.
-    def compiler(id)
+    # Equivalent to `Technique.new` with the parent benchmark being `self`.
+    # If a block is supplied, it is passed to `Technique.new`. If more than
+    # one id is given, this is equivalent to calling the method several times
+    # with a single id, except that no block may be given.
+    def technique(id, *more, &block)
+      if !more.empty? && block_given?
+        raise "Can't supply a block when multiple ids are provided."
+      end
+
+      for t in [id] + more
+        raise "Overwriting an existing technique." if @techniques.has_key? t
+        @techniques[t] = Technique.new(t, self, &block)
+      end
+    end
+
+    # compiler: Symbol(s) (opt)
+    #
+    # Adds a compiler to the set of compilers supported by the benchmark.
+    # This defaults to the set of compilers supported by the parent benchmark
+    # suite. Adding one or more compilers with this method will cause only
+    # those compilers to be supported by this benchmark.
+    #
+    # If more than one compiler id is given, it is equivalent to calling the
+    # method with a single id several times.
+    def compiler(id, *more)
       @compilers << Compiler[id]
+      more.each(method(:compiler))
     end
 
     def to_s
       techs = @techniques.values.map(&:to_s).join("\n").indent(4)
       if @file
-        "#{@name} (@file):\n#{techs}\n"
+        "#{self.name} (self.input_file):\n#{techs}\n"
       else
-        "#{@name}:\n#{techs}\n"
+        "#{self.name}:\n#{techs}\n"
       end
     end
 
@@ -90,13 +115,13 @@ module Benchcc
       task = -> (cc) {
         Gnuplot.open do |gp|
           Gnuplot::Plot.new(gp) do |plot|
-            plot.title      "#{@name} with #{cc.id}"
+            plot.title      "#{self.name} with #{cc.id}"
             plot.xlabel     "Input size"
             plot.ylabel     "Compilation time"
             plot.format     'y "%f s"'
 
             plot.term       "png"
-            plot.output     "charts/#{@id}_#{cc.id}.png"
+            plot.output     (self.output_directory / cc.id).sub_ext(".png")
             plot.data = @techniques.values.map { |tech|
               # Note: we must transpose because Gnuplot expects the
               # data as [[x...], [y...]] instead of [[x, y]...].

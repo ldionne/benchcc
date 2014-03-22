@@ -1,4 +1,5 @@
-require 'delegate'
+require "delegate"
+require "pathname"
 
 
 # Indents a multiline string.
@@ -41,6 +42,12 @@ Numeric.class_eval do
     else
       (1 + self/k) * k
     end
+  end
+end
+
+Pathname.class_eval do
+  def /(other)
+    self + other
   end
 end
 

@@ -1,7 +1,9 @@
 require "benchcc/benchmark"
+require "benchcc/compiler"
 require "benchcc/utils"
 
 require "docile"
+require "pathname"
 
 
 module Benchcc
@@ -12,17 +14,63 @@ module Benchcc
     # Docile-style attributes.
     def initialize(&block)
       @benchmarks = Hash.new
+      @compilers = OnFirstShift.new(Compiler.registered.dup, &:clear)
+
+      self.output_directory Pathname.getwd
+      self.input_directory  Pathname.getwd
       Docile.dsl_eval(self, &block) if block_given?
+    end
+
+    # register: Benchmark -> Nil
+    #
+    # Registers a benchmark in the benchmark suite.
+    def register(bm)
+      if @benchmarks.has_key? bm.id
+        raise ArgumentError, "Overwriting an existing benchmark"
+      end
+      @benchmarks[bm.id] = bm
     end
 
     # benchmark: Symbol -> Benchmark
     #
-    # Creates a new benchmark with the given id. The block can be used to
-    # populate the benchmark as with Benchmark.new.
+    # Equivalent to `Benchmark.new` with the parent suite being `self`.
     def benchmark(id, &block)
-      raise "Overwriting an existing benchmark." if @benchmarks.has_key? id
-      @benchmarks[id] = Benchmark.new(id, &block)
+      Benchmark.new(id, self, &block)
     end
+
+    # input_directory: Pathname (opt)
+    #
+    # Input directory for the benchmarks. Defaults to the current directory.
+    def input_directory(path = @indir)
+      @indir = Pathname.new(path)
+    end
+
+    # output_directory: Pathname (opt)
+    #
+    # Output directory for the benchmark results. Defaults to the current
+    # directory.
+    def output_directory(path = @outdir)
+      @outdir = Pathname.new(path)
+    end
+
+    # compiler: Symbol(s) (opt)
+    #
+    # Adds a compiler to the set of compilers supported by the benchmark
+    # suite. This defaults to all the supported compilers. If one or more
+    # compilers are added with this method, only those compilers will be
+    # supported by the benchmark suite.
+    #
+    # If more than one compiler id is given, it is equivalent to calling the
+    # method with a single id several times.
+    def compiler(id, *more)
+      @compilers << Compiler[id]
+      more.each(&method(:compiler))
+    end
+
+    # compilers: [Compiler]
+    #
+    # An array of the compilers supported by the benchmark suite.
+    attr_reader :compilers
 
     def to_s
       @benchmarks.values.map(&:to_s).join("\n")
@@ -58,8 +106,7 @@ EOS
     end
 
   public
-
-    # run: Nil
+    # run_from_cli: Nil
     #
     # Runs a benchmark suite from the command line. See usage() for details.
     def run_from_cli(argv)
