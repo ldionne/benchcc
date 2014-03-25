@@ -14,7 +14,7 @@ describe Benchcc::BenchmarkSuite do
 
   describe "specify compiler at suite level" do
     let(:suite) { Benchcc::BenchmarkSuite.new { compiler :clang } }
-    it { expect(suite.compilers).to eq([Benchcc::Compiler[:clang]]) }
+    it { expect(suite.compilers).to eq([:clang]) }
   end
 
   describe "run" do

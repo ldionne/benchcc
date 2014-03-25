@@ -61,8 +61,8 @@ module Benchcc
     # If more than one compiler id is given, it is equivalent to calling the
     # method with a single id several times.
     def compiler(id, *more)
-      @compilers << Compiler[id]
-      more.each(&method(:compiler))
+      @compilers << id
+      @compilers = @compilers + more
     end
 
     # compilers: [Compiler]
