@@ -21,8 +21,6 @@ module Benchcc
       @tasks = []
       @configs = Hash.new
 
-      self.name             @id.to_s.gsub(/_/, ' ').capitalize
-      self.description      nil
       self.output_directory File.join(@suite.output_directory, @id.to_s)
       self.input_file       File.join(@suite.input_directory, @id.to_s) + ".erb.cpp"
       Docile.dsl_eval(self, &block) if block_given?
@@ -34,7 +32,9 @@ module Benchcc
     #
     # Add _a copy_ of the given configuration to the benchmark.
     def add_config(config)
-      raise "Overwriting an existing config." if @configs.has_key? config.id
+      if @configs.has_key? config.id
+        raise "overwriting existent config #{config.id}"
+      end
       @configs[config.id] = config.dup
     end
 
@@ -42,17 +42,6 @@ module Benchcc
     #
     # Token uniquely identifying the benchmark within a suite.
     attr_reader :id
-
-    # name: String (opt)
-    #
-    # Optional pretty name of the benchmark. Defaults to a prettified
-    # version of id.
-    dsl_accessor :name
-
-    # description: String (opt)
-    #
-    # Optional description of the benchmark. Defaults to nil.
-    dsl_accessor :description
 
     # output_directory: String (opt)
     #
@@ -84,7 +73,7 @@ module Benchcc
 
     def to_s
       configs = @configs.values.map(&:to_s).join("\n").indent(4)
-      "#{self.name} (self.input_file):\n#{configs}\n"
+      "#{self.id} (self.input_file):\n#{configs}\n"
     end
 
     # task: Proc -> Nil
@@ -92,7 +81,7 @@ module Benchcc
     # Registers a task to do when the benchmark is run. Tasks are simply
     # `Procs` called with an environment when the benchmark is run.
     def task(&block)
-      raise ArgumentError, "A block must be provided." unless block_given?
+      raise ArgumentError, "a block must be provided" unless block_given?
       @tasks << block
     end
 
@@ -107,7 +96,7 @@ module Benchcc
 
         Gnuplot.open do |gp|
           Gnuplot::Plot.new(gp) do |plot|
-            plot.title      "#{self.name} with #{env[:compiler]}"
+            plot.title      "#{self.id} with #{env[:compiler]}"
             plot.xlabel     "Input size"
             plot.ylabel     "Compilation time"
             plot.format     'y "%f s"'

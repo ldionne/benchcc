@@ -13,14 +13,6 @@ describe Benchcc::Benchmark do
       @bm = Benchcc::Benchmark.new(:benchmark_id, @suite)
     end
 
-    it "has a pretty name" do
-      expect(@bm.name).to eq("Benchmark id")
-    end
-
-    it "has no description" do
-      expect(@bm.description).to eq(nil)
-    end
-
     it "has the right output directory" do
       expect(@bm.output_directory).to eq("#{@suite.output_directory}/benchmark_id")
     end
@@ -31,16 +23,14 @@ describe Benchcc::Benchmark do
   end
 
   describe "populated benchmark" do
-    it "has the specified name, description, and input file" do
+    it "has the specified input file and output directory" do
       bm = Benchcc::Benchmark.new(:benchmark_id) do
-        name        "test_name"
-        description "test_description"
-        input_file  "test_input_file"
+        input_file       "test_input_file"
+        output_directory "test_output_directory"
       end
 
-      expect(bm.name).to eq("test_name")
-      expect(bm.description).to eq("test_description")
       expect(bm.input_file).to eq("test_input_file")
+      expect(bm.output_directory).to eq("test_output_directory")
     end
   end
 

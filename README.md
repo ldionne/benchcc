@@ -57,11 +57,12 @@
 - Consider allowing nested benchmark suites. Maybe this would not require much
   modifications to the code and this could be useful.
 
-- `technique`s are really configs.
-    ```ruby
-        config :optional_name do
-            requires do end
-            env {key:value} do |e| # block is optional
-            end
-        end
-    ```
+```ruby
+bm = Benchmark.new "sequence/at" do
+  variant :fair, [true, false]
+  variant :compiler, [gcc, clang]
+
+  variant :technique, [:mpl11_list -> requires stuff, :mpl_list, :mpl_vector]
+  time 1...10
+end
+```
