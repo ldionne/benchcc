@@ -76,13 +76,12 @@ module Benchcc
 
     # run: Nil
     #
-    # Runs the benchmark with the specified id. If provided, the environment
-    # is passed down to the benchmark.
-    def run(bm, env = Hash.new)
+    # Runs the benchmark with the specified id.
+    def run(bm)
       if !@benchmarks.has_key? bm
         raise ArgumentError, "Unknown benchmark <#{bm}>"
       end
-      @benchmarks[bm].run(env)
+      @benchmarks[bm].run
     end
 
     # run_from_cli: Nil
@@ -96,10 +95,6 @@ Usage:
 
 where <benchmark> is the id of a benchmark to run and [options] are:
 EOS
-        opt :fair, "When available, benchmarks will be more fair. For "\
-                   "example, all headers will always be included at "  \
-                   "the beginning of the benchmark to eliminate any "  \
-                   "difference in header parsing time.", :default => false
         opt :list, "List all the available benchmarks", :default => false
       end
 
@@ -112,7 +107,7 @@ EOS
       unless bm && @benchmarks.has_key?(bm.to_sym)
         Trollop::die "\"#{argv.last}\" does not correspond to a valid benchmark id"
       end
-      run(bm.to_sym, {:fair => opts[:fair]})
+      run(bm.to_sym)
     end
   end # class Suite
 end # module Benchcc

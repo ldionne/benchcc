@@ -20,7 +20,6 @@ module Benchcc
       @suite = suite
       @tasks = []
       @configs = Hash.new
-      @compilers = OnFirstShift.new(@suite.compilers.dup, &:clear)
 
       self.name             @id.to_s.gsub(/_/, ' ').capitalize
       self.description      nil
@@ -82,25 +81,6 @@ module Benchcc
         self.add_config(Config.new(id, &block))
       end
     end
-
-    # compiler: Symbol(s) (opt)
-    #
-    # Adds a compiler to the set of compilers supported by the benchmark.
-    # This defaults to the set of compilers supported by the parent benchmark
-    # suite. Adding one or more compilers with this method will cause only
-    # those compilers to be supported by this benchmark.
-    #
-    # If more than one compiler id is given, it is equivalent to calling the
-    # method with a single id several times.
-    def compiler(id, *more)
-      @compilers << id
-      @compilers = @compilers + more
-    end
-
-    # compilers: [Symbol]
-    #
-    # An array of the compilers supported by the benchmark.
-    attr_reader :compilers
 
     def to_s
       configs = @configs.values.map(&:to_s).join("\n").indent(4)
@@ -174,9 +154,9 @@ module Benchcc
     # Runs all the tasks registered in the benchmark, for each supported
     # compiler. If provided, the environment is passed to each task,
     # augmented with the id of the compiler being used: `{:compiler => id}`.
-    def run(env = Hash.new)
-      @tasks.product(self.compilers).each do |task, cc|
-        task.call(env.merge({:compiler => cc}))
+    def run
+      @tasks.product(@suite.compilers).each do |task, cc|
+        task.call({compiler: cc})
       end
     end
   end # class Benchmark

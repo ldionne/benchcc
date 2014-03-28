@@ -28,22 +28,16 @@ describe Benchcc::Benchmark do
     it "has the right input file" do
       expect(@bm.input_file).to eq("#{@suite.input_directory}/benchmark_id.erb.cpp")
     end
-
-    it "supports the same compilers as the benchmark suite" do
-      expect(@bm.compilers).to eq(@suite.compilers)
-    end
   end
 
   describe "populated benchmark" do
-    it "has the specified name, description, compilers and input file" do
+    it "has the specified name, description, and input file" do
       bm = Benchcc::Benchmark.new(:benchmark_id) do
-        compiler    :test_compiler
         name        "test_name"
         description "test_description"
         input_file  "test_input_file"
       end
 
-      expect(bm.compilers).to eq([:test_compiler])
       expect(bm.name).to eq("test_name")
       expect(bm.description).to eq("test_description")
       expect(bm.input_file).to eq("test_input_file")
@@ -60,17 +54,6 @@ describe Benchcc::Benchmark do
       }.run
 
       expect(tasks).to include(1, 2, 3)
-    end
-
-    it "forwards the environment to the tasks" do
-      ran = false
-      Benchcc::Benchmark.new(:bm) {
-        task { |env|
-          ran = true
-          expect(env).to include(:key => :value)
-        }
-      }.run({:key => :value})
-      expect(ran).to be_true
     end
   end
 
