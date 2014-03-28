@@ -1,5 +1,5 @@
 require "benchcc/benchmark_suite"
-require "benchcc/technique"
+require "benchcc/config"
 require "benchcc/utils"
 
 require "docile"
@@ -16,10 +16,10 @@ module Benchcc
     # benchmark using Docile. If a parent benchmark suite is specified,
     # it is used instead of the default benchmark suite.
     def initialize(id, suite = BenchmarkSuite.new, &block)
-      @id = id
+      @id = id.to_sym
       @suite = suite
       @tasks = []
-      @techniques = Hash.new
+      @configs = Hash.new
       @compilers = OnFirstShift.new(@suite.compilers.dup, &:clear)
 
       self.name             @id.to_s.gsub(/_/, ' ').capitalize
@@ -29,6 +29,14 @@ module Benchcc
       Docile.dsl_eval(self, &block) if block_given?
 
       @suite.register(self)
+    end
+
+    # add_config: Config -> Nil
+    #
+    # Add _a copy_ of the given configuration to the benchmark.
+    def add_config(config)
+      raise "Overwriting an existing config." if @configs.has_key? config.id
+      @configs[config.id] = config.dup
     end
 
     # id: Symbol
@@ -62,17 +70,16 @@ module Benchcc
     # the environment is available as `env` when evaluating the template.
     dsl_accessor :input_file
 
-    # technique: Symbol(s) (opt)
+    # config: Symbol(s) (opt)
     #
-    # Equivalent to `Technique.new` with the parent benchmark being `self`.
-    # If a block is supplied, it is passed to `Technique.new`. If more than
-    # one id is given, this is equivalent to calling the method several times
-    # with a single id and the same block.
-    def technique(*ids, &block)
+    # Create a new configuration for the current benchmark. If a block is
+    # supplied, it is passed to `Config.new`. If more than one id is given,
+    # this is equivalent to calling the method several times with a single id
+    # and the same block.
+    def config(*ids, &block)
       raise ArgumentError, "At least one id must be given." if ids.empty?
       ids.each do |id|
-        raise "Overwriting an existing technique." if @techniques.has_key? id
-        @techniques[id] = Technique.new(id, self, &block)
+        self.add_config(Config.new(id, &block))
       end
     end
 
@@ -87,7 +94,7 @@ module Benchcc
     # method with a single id several times.
     def compiler(id, *more)
       @compilers << id
-      more.each(&method(:compiler))
+      @compilers = @compilers + more
     end
 
     # compilers: [Symbol]
@@ -96,8 +103,8 @@ module Benchcc
     attr_reader :compilers
 
     def to_s
-      techs = @techniques.values.map(&:to_s).join("\n").indent(4)
-      "#{self.name} (self.input_file):\n#{techs}\n"
+      configs = @configs.values.map(&:to_s).join("\n").indent(4)
+      "#{self.name} (self.input_file):\n#{configs}\n"
     end
 
     # task: Proc -> Nil
@@ -111,7 +118,7 @@ module Benchcc
 
     # time: [Integer] -> Nil
     #
-    # When the benchmark is run, the techniques will all be timed for
+    # When the benchmark is run, the configs will all be timed for
     # inputs in the given interval, and with all supported compilers.
     def time(xs)
       task do |env|
@@ -127,18 +134,39 @@ module Benchcc
 
             plot.term       "png"
             plot.output     File.join(self.output_directory, env[:compiler].to_s) + ".png"
-            plot.data = @techniques.values.map { |technique|
+            plot.data = @configs.values.map { |config|
               # Note: we must transpose because Gnuplot expects the
               # data as [[x...], [y...]] instead of [[x, y]...].
-              curve = technique.time(xs, env).transpose
+              curve = time_config(config, xs, env).transpose
               Gnuplot::DataSet.new(curve) { |ds|
                 ds.with = "lines"
-                ds.title = technique.name
+                ds.title = config.id
               }
             }
           end
         end
       end
+    end
+
+    # time: [Integers] x Hash -> [Integer x Benchmark.Tms]
+    #
+    # Time the compilation of this configuration with the given environment.
+    #
+    # The `xs` argument represents the range of inputs to time the compilation
+    # with. Note that the configuration is only compiled when it is enabled.
+    # This method sets `env[:input]` to the current input size for each input
+    # size in `xs`.
+    def time_config(config, xs, env)
+      results = []
+      for x in xs
+        config.with(env.merge({:input => x})) { |env|
+          y = Benchcc.configure(self.input_file, env) { |file|
+            Benchcc.time { Compiler[env[:compiler]].compile(file) }.real
+          }
+          results << [x, y]
+        }
+      end
+      return results
     end
 
     # run: Hash -> Nil

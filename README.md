@@ -54,8 +54,6 @@
   example, what input size and what compiler we're currently using or
   something like that would be helpful.
 
-- Decide symbols vs strings for ids.
-
 - Consider allowing nested benchmark suites. Maybe this would not require much
   modifications to the code and this could be useful.
 

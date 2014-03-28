@@ -48,6 +48,12 @@ Numeric.class_eval do
   end
 end
 
+Hash.class_eval do
+  def subsetof?(other)
+    (self.to_a - other.to_a).empty?
+  end
+end
+
 Pathname.class_eval do
   def /(other)
     other = other.to_s if other.kind_of? Symbol

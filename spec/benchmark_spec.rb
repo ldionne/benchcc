@@ -2,33 +2,39 @@ require "spec_helper"
 
 
 describe Benchcc::Benchmark do
+  it "allows the id to be a string instead of a symbol" do
+    bm = Benchcc::Benchmark.new("benchmark_id")
+    expect(bm.id).to eq(:benchmark_id)
+  end
 
-  describe "creating an empty benchmark" do
-    suite = Benchcc::BenchmarkSuite.new
-    bm = Benchcc::Benchmark.new(:benchmark_id, suite)
+  describe "empty benchmark" do
+    before(:each) do
+      @suite = Benchcc::BenchmarkSuite.new
+      @bm = Benchcc::Benchmark.new(:benchmark_id, @suite)
+    end
 
     it "has a pretty name" do
-      expect(bm.name).to eq("Benchmark id")
+      expect(@bm.name).to eq("Benchmark id")
     end
 
     it "has no description" do
-      expect(bm.description).to eq(nil)
+      expect(@bm.description).to eq(nil)
     end
 
     it "has the right output directory" do
-      expect(bm.output_directory).to eq("#{suite.output_directory}/benchmark_id")
+      expect(@bm.output_directory).to eq("#{@suite.output_directory}/benchmark_id")
     end
 
     it "has the right input file" do
-      expect(bm.input_file).to eq("#{suite.input_directory}/benchmark_id.erb.cpp")
+      expect(@bm.input_file).to eq("#{@suite.input_directory}/benchmark_id.erb.cpp")
     end
 
     it "supports the same compilers as the benchmark suite" do
-      expect(bm.compilers).to eq(suite.compilers)
+      expect(@bm.compilers).to eq(@suite.compilers)
     end
   end
 
-  describe "create and populate the benchmark" do
+  describe "populated benchmark" do
     it "has the specified name, description, compilers and input file" do
       bm = Benchcc::Benchmark.new(:benchmark_id) do
         compiler    :test_compiler
@@ -68,23 +74,19 @@ describe Benchcc::Benchmark do
     end
   end
 
-  describe "technique" do
+  describe "config" do
     for n in 1..4 do
-      ts = (1..n).map { |i| "tech#{i}" }
+      ids = (1..n).map { |i| "config##{i}" }
 
-      it "creates several techniques with the block when one is provided" do
-        techs = 0
-        Benchcc::Benchmark.new(:bench) do
-          technique(*ts) { techs += 1  }
-        end
-        expect(techs).to eq(n)
+      it "creates several configs with the block when one is provided" do
+        configs = 0
+        Benchcc::Benchmark.new(:bench) { config(*ids) { configs += 1  } }
+        expect(configs).to eq(n)
       end
 
       it "works without a block too" do
         expect {
-          Benchcc::Benchmark.new(:bench) do
-            technique(*ts)
-          end
+          Benchcc::Benchmark.new(:bench) { config(*ids) }
         }.not_to raise_error
       end
     end
@@ -97,7 +99,7 @@ describe Benchcc::Benchmark do
           input_file       "spec/test_files/test.erb.cpp"
           output_directory dir
           time             0..1
-          technique :t1, :t2
+          config           :config1, :config2
         end
 
         expect { bm.run }.not_to raise_error
