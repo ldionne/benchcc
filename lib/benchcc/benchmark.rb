@@ -129,10 +129,12 @@ module Benchcc
       results = []
       for x in xs
         config.with(env.merge({:input => x})) { |env|
-          y = Benchcc.configure(self.input_file, env) { |file|
-            Benchcc.time { Compiler[env[:compiler]].compile(file) }.real
-          }
-          results << [x, y]
+          if config.enabled? env
+            y = Benchcc.configure(self.input_file, env) { |file|
+              Benchcc.time { Compiler[env[:compiler]].compile(file) }.real
+            }
+            results << [x, y]
+          end
         }
       end
       return results
