@@ -17,7 +17,6 @@ Gem::Specification.new do |s|
   s.platform      = Gem::Platform::RUBY
   s.require_paths = ["lib"]
 
-  s.add_dependency "docile", "~> 1.1"
   s.add_dependency "gnuplot", "~> 2.6"
-  s.add_dependency "trollop", "~> 2.0"
+  s.add_dependency "rake", "~> 10.2"
 end

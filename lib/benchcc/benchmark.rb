@@ -1,154 +1,248 @@
-require "benchcc/benchmark_suite"
-require "benchcc/config"
-require "benchcc/utils"
+require "benchcc/compiler"
+require "benchcc/utility"
 
-require "docile"
 require "gnuplot"
+require "ostruct"
+require "rake"
+require "set"
 
 
 module Benchcc
-  class Benchmark
-    extend Dsl
-
-    # Creates a new benchmark with the given id.
-    #
-    # If a block is given, it is used to populate the attributes of the
-    # benchmark using Docile. If a parent benchmark suite is specified,
-    # it is used instead of the default benchmark suite.
-    def initialize(id, suite = BenchmarkSuite.new, &block)
-      @id = id.to_sym
-      @suite = suite
-      @tasks = []
-      @configs = Hash.new
-
-      self.output_directory File.join(@suite.output_directory, @id.to_s)
-      self.input_file       File.join(@suite.input_directory, @id.to_s) + ".erb.cpp"
-      Docile.dsl_eval(self, &block) if block_given?
-
-      @suite.register(self)
+  class AmbiguousFilename < StandardError
+    def initialize(pattern, matches)
+      @pattern = pattern
+      @matches = matches
     end
 
-    # add_config: Config -> Nil
+    def to_s
+      "filename cannot be determined unambiguously "\
+                                      "(\"#{@pattern}\" matched #{@matches})"
+    end
+  end
+
+  class Benchmark < Rake::Task
+    def initialize(*args)
+      super *args
+      @variants = Hash.new
+      @predicates = []
+    end
+
+    # file: String
     #
-    # Add _a copy_ of the given configuration to the benchmark.
-    def add_config(config)
-      if @configs.has_key? config.id
-        raise "overwriting existent config #{config.id}"
+    # Path of the file where the benchmark is implemented.
+    #
+    # By default, the file is `name.*`, where `name` is the name of the
+    # benchmark. If that glob pattern matches more than one file, then it
+    # is ambiguous and `file` must be specified explicitly.
+    def file
+      unless @file
+        matches = Dir["#{name}.*"]
+        raise AmbiguousFilename.new("#{name}.*", matches) if matches.size > 1
+        @file = matches.first
+        raise "\"#{@file}\" is not a valid file" unless File.file? @file
       end
-      @configs[config.id] = config.dup
+      return @file
     end
 
-    # id: Symbol
-    #
-    # Token uniquely identifying the benchmark within a suite.
-    attr_reader :id
+    attr_writer :file
 
+    # variant: String x Values -> Nil
+    #
+    # Registers a new variable parameterizing the benchmark.
+    #
+    # Benchmarks are parameterized with variables that can range over
+    # different values. When the benchmark is run, the actions associated
+    # with it can access all the possible combinations of those variables.
+    # Since some combinations may be nonsensical, a filter may be applied
+    # and only the valid combinations are kept (see `requires` for details).
+    #
+    # If `variant` is called with the name of a variable that already exists,
+    # the possible values of the variable are merged with the new ones.
+    def variant(name, domain)
+      @variants[name] ||= Set.new
+      @variants[name].merge(domain)
+    end
+
+    # all_variants: Hashes
+    #
+    # Return all the possible combinations of variables parameterizing
+    # the benchmark. The combinations are not filtered.
+    def all_variants
+      Utility.hash_product(@variants)
+    end
+
+    # Micro-DSL to register a predicate under certain conditions.
+    #
+    # Specifically, `if_ { condition } .then_require { predicate }`
+    # is equivalent to registering a predicate that is true whenever
+    # `condition` is not satisfied, and that forwards to `predicate`
+    # otherwise.
+    def if_(&condition)
+      bm, r = self, Object.new
+      r.define_singleton_method(:then_require) do |&predicate|
+        bm.requires { |*args, **kw|
+          condition.call(*args, **kw) ? predicate.call(*args, **kw) : true
+        }
+        return nil # `bm.requires` returns `bm`, which would allow method
+                   # chaining and would make the semantics of `if_` ambiguous.
+      end
+      return r
+    end
+
+    # requires: Proc -> self
+    #
+    # Register a predicate to be satisfied for the benchmark to be enabled.
+    #
+    # By default, the benchmark is always enabled. Calling this method several
+    # times will cause the benchmark to be enabled when all the registered
+    # predicates are satisfied.
+    #
+    # Returns self to allow some useful method chains.
+    def requires(&predicate)
+      @predicates << predicate
+      return self
+    end
+
+    # enabled?: Hash or OpenStruct -> bool
+    #
+    # Returns whether the benchmark is enabled in the given context.
+    # The context is converted to an `OpenStruct` before it is sent
+    # to the predicates of the benchmark. Note that predicates may
+    # not modify the context since it is frozen.
+    def enabled?(context)
+      ctx = OpenStruct.new(context).freeze
+      @predicates.all? { |predicate| predicate.call(ctx) }
+    end
+
+    # Negates the enabled? method; provided for convenience.
+    def disabled?(context)
+      !enabled? context
+    end
+
+    # plot: Integers -> Nil
+    #
+    # Plot compilation time statistics.
+    #
+    # When the benchmark is run, the associated file will be compiled and
+    # time statistics will be plotted for all valid variations of the
+    # benchmark. Before determining whether the benchmark is enabled for a
+    # given variation, these fields are set in the hash of variations:
+    # - the `:input` field is set to each value in `inputs`
+    # - the `:compiler` field is set to the compiler in use
+    #
+    # If a block is given, it is called with the plot at the very end
+    # so it may customize it.
+    def plot(inputs)
+      enhance do |_, args|
+        cc = args.compiler
+        if application.options.trace
+          application.trace "** Benchmark #{file} with #{cc}"
+        end
+        Gnuplot.open do |io|
+          Gnuplot::Plot.new(io) do |pl|
+            pl.title  "#{name} with #{cc}"
+            pl.xlabel "Input size"
+            pl.ylabel "Compilation time"
+            pl.format 'y "%f s"'
+            pl.term   "png"
+            pl.output name + ".png"
+
+            all_variants.each do |variant|
+              data = inputs
+                .map { |x| variant.merge(input: x, compiler: cc) }
+                .select(&method(:enabled?))
+                .map { |ctx| [ctx[:input], cc.rtime(file, ctx).real] }
+                .transpose
+
+              pl.data << Gnuplot::DataSet.new(data) { |ds|
+                ds.with = "lines"
+                ds.title = variant.values.map(&:to_s).join("_")
+              } unless data.empty?
+            end
+
+            yield pl if block_given?
+          end
+        end
+      end
+    end
+  end # class Benchmark
+
+  def benchmark(name)
+    bm = Benchmark.define_task(name, [:compiler]) do |_, args|
+      args.with_defaults(compiler: CLANG)
+    end
+
+    yield bm if block_given?
+    return bm
+  end
+  module_function :benchmark
+end # module Benchcc
+
+
+=begin
+
+module Benchcc
+  class Benchmark
     # output_directory: String (opt)
     #
     # Directory where the benchmark results should be stored. Defaults to
     # `suite_output_directory/benchmark_id`.
     dsl_accessor :output_directory
-
-    # input_file: String
-    #
-    # Path of a file where the benchmark is implemented. This defaults to
-    # `suite_input_directory/benchmark_id.erb.cpp`. The extension of the file
-    # determines whether we treat it as a source file or as an ERB template
-    # from which the source should be generated. If the file is a template,
-    # the environment is available as `env` when evaluating the template.
-    dsl_accessor :input_file
-
-    # config: Symbol(s) (opt)
-    #
-    # Create a new configuration for the current benchmark. If a block is
-    # supplied, it is passed to `Config.new`. If more than one id is given,
-    # this is equivalent to calling the method several times with a single id
-    # and the same block.
-    def config(*ids, &block)
-      raise ArgumentError, "At least one id must be given." if ids.empty?
-      ids.each do |id|
-        self.add_config(Config.new(id, &block))
-      end
-    end
-
-    def to_s
-      configs = @configs.values.map(&:to_s).join("\n").indent(4)
-      "#{self.id} (self.input_file):\n#{configs}\n"
-    end
-
-    # task: Proc -> Nil
-    #
-    # Registers a task to do when the benchmark is run. Tasks are simply
-    # `Procs` called with an environment when the benchmark is run.
-    def task(&block)
-      raise ArgumentError, "a block must be provided" unless block_given?
-      @tasks << block
-    end
-
-    # time: [Integer] -> Nil
-    #
-    # When the benchmark is run, the configs will all be timed for
-    # inputs in the given interval, and with all supported compilers.
-    def time(xs)
-      task do |env|
-        # Just make sure the directories are created.
-        FileUtils.makedirs(self.output_directory)
-
-        Gnuplot.open do |gp|
-          Gnuplot::Plot.new(gp) do |plot|
-            plot.title      "#{self.id} with #{env[:compiler]}"
-            plot.xlabel     "Input size"
-            plot.ylabel     "Compilation time"
-            plot.format     'y "%f s"'
-
-            plot.term       "png"
-            plot.output     File.join(self.output_directory, env[:compiler].to_s) + ".png"
-            plot.data = @configs.values.map { |config|
-              # Note: we must transpose because Gnuplot expects the
-              # data as [[x...], [y...]] instead of [[x, y]...].
-              curve = time_config(config, xs, env).transpose
-              Gnuplot::DataSet.new(curve) { |ds|
-                ds.with = "lines"
-                ds.title = config.id
-              }
-            }
-          end
-        end
-      end
-    end
-
-    # time: [Integers] x Hash -> [Integer x Benchmark.Tms]
-    #
-    # Time the compilation of this configuration with the given environment.
-    #
-    # The `xs` argument represents the range of inputs to time the compilation
-    # with. Note that the configuration is only compiled when it is enabled.
-    # This method sets `env[:input]` to the current input size for each input
-    # size in `xs`.
-    def time_config(config, xs, env)
-      results = []
-      for x in xs
-        config.with(env.merge({:input => x})) { |env|
-          if config.enabled? env
-            y = Benchcc.configure(self.input_file, env) { |file|
-              Benchcc.time { Compiler[env[:compiler]].compile(file) }.real
-            }
-            results << [x, y]
-          end
-        }
-      end
-      return results
-    end
-
-    # run: Hash -> Nil
-    #
-    # Runs all the tasks registered in the benchmark, for each supported
-    # compiler. If provided, the environment is passed to each task,
-    # augmented with the id of the compiler being used: `{:compiler => id}`.
-    def run
-      @tasks.product(@suite.compilers).each do |task, cc|
-        task.call({compiler: cc})
-      end
-    end
   end # class Benchmark
+
+  class Config
+    # requires: Hash x Proc -> Nil
+    #
+    # Specify conditions that must be met in order for this configuration to
+    # be enabled.
+    #
+    # If `key => value` pairs are passed to the method, the environment must
+    # include those pairs for the configuration to be enabled. If a block is
+    # given, it is taken as a predicate (to be called on the environment) that
+    # must be satisfied for the configuration to be enabled.
+    #
+    # By default, the configuration is always enabled. Calling this method
+    # several times will cause the configuration to be enabled when all the
+    # registered conditions are satisfied.
+    def requires(**keys, &predicate)
+      predicate ||= proc { true }
+      @predicates << -> (env) { keys.subsetof?(env) && predicate.call(env) }
+    end
+
+    # compiler: Symbol(s) -> Nil
+    #
+    # Require the compiler to be one of the given `compiler_ids` for this
+    # config to be enabled.
+    def compiler(*compiler_ids)
+      self.requires { |env| compiler_ids.include?(env[:compiler]) }
+    end
+
+    # env: Hash x Proc -> Nil
+    #
+    # Specify modifications to perform on the environment before the
+    # configuration is benchmarked.
+    #
+    # If `key => value` pairs may are passed to the method, they are merged
+    # into the environment. If a block is given, it is called with the
+    # environment before the config is benchmarked and may return it modified.
+    # If the method is called several times, the modifications to perform on
+    # the environment are all performed in their registration order.
+    def env(**keys, &modifs)
+      modifs ||= proc { |env| env }
+      @modifs << -> (env) { modifs.call(env.merge(keys)) }
+    end
+
+    # with: Hash -> ...
+    #
+    # Augment the environment with the registered modifications and yield
+    # to the block. This method also augments the environment with
+    # `:config => self.id`.
+    def with(env)
+      env = env.merge(config: self.id)
+      env = @modifs.reduce(env) { |e, modif| modif.call(e) }
+      yield env
+    end
+  end # class Technique
 end # module Benchcc
+
+=end

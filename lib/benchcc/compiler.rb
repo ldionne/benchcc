@@ -1,87 +1,79 @@
-module Benchcc
-  class FailedCompilation < RuntimeError
+require "benchcc/utility"
 
+
+module Benchcc
+  class CompilationError < RuntimeError
+    def initialize(compiler, file, *includes)
+
+    end
   end
 
   class Compiler
-    @@compilers = Hash.new
-
-    # Compiler[]: Symbol -> Compiler
-    #
-    # Returns the Compiler object associated to the given compiler id.
-    def self.[](compiler_id)
-      if !@@compilers.has_key? compiler_id
-        raise ArgumentError, "Unknown compiler #{compiler_id}."
-      end
-      @@compilers[compiler_id]
+    # Create a new compiler whose binary is located at `bin`.
+    def initialize(bin)
+      @cc = bin
+      yield self if block_given?
     end
 
-    # Compiler.available?: Symbol -> Bool
+    # Maximum template recursion depth supported by the compiler.
+    attr_accessor :template_depth
+
+    # Maximum constexpr recursion depth supported by the compiler.
+    attr_accessor :constexpr_depth
+
+    # compile: Path x Paths -> Nil
     #
-    # Returns whether the compiler with the given id is available.
-    def self.available?(compiler_id)
-      @@compilers.has_key? compiler_id
+    # Compile the specified file.
+    #
+    # If include paths are given, they are added to the header search paths
+    # of the compiler.
+    def compile(filename, *includes)
+      `#{cli(filename, *includes)}`
+      raise CompilationError.new(self, filename, *includes) unless $?.success?
     end
 
-    # Compiler.register: Compiler -> Nil
+    # cli: Path x Paths -> String
     #
-    # Adds a compiler to the list of available compilers.
-    def self.register(compiler)
-      if @@compilers.has_key? compiler.id
-        raise ArgumentError, "Overwriting existing compiler #{compiler.id}."
-      end
-      @@compilers[compiler.id] = compiler
+    # Return the command line that would be executed to compile the
+    # given file with the given include paths.
+    def cli(filename, *includes)
+      includes = includes.map(&"-I ".method(:+)).join(" ")
+      warnings = ["-Wall", "-Wextra", "-pedantic"].join(" ")
+      "#{@cc} -o /dev/null -std=c++11 #{warnings} #{includes} #{filename}"
     end
 
-    # Compiler.list: [Symbol]
+    # rtime: Path x Hash or OpenStruct -> ::Benchmark.Tms
     #
-    # Returns the list of available compilers.
-    def self.list
-      @@compilers.keys
+    # Equivalent to `time`, except the file is taken to be an ERB template
+    # to be generated before compiling.
+    def rtime(file, env)
+      code = Utility.from_erb(file, env)
+      hints = [File.basename(file), File.extname(file)]
+      return Tempfile.with(code, hints) { |tmp| time(tmp.path) }
     end
 
-
-    # id: Symbol
+    # time: ... -> ::Benchmark.Tms
     #
-    # A unique id representing the compiler.
-    attr_reader :id
-
-    # Creates a new Compiler with the given id.
-    #
-    # The block is mandatory and calling it with a filename should compile
-    # that file.
-    def initialize(id, &compile)
-      @id = id
-      @compile = compile
-      Compiler.register(self)
+    # Time the `compile` method with the given arguments.
+    def time(*args)
+      stats = Utility.time { compile(*args) }
+      stats.instance_variable_set(:@label, to_s)
+      return stats
     end
 
-    # Compile the given file.
-    def compile(file)
-      @compile.call(file)
-      raise FailedCompilation.new unless $?.success?
+    # Show the name and the version of the compiler.
+    def to_s
+      `#{@cc} --version`.lines.first.strip
     end
   end # class Compiler
 
-  Compiler.new(:clang) { |file|
-    `clang++-3.5 -S #{file} -o /dev/null -I ~/code/mpl11/include -std=c++11`
-  }
+  GCC = Compiler.new("g++-4.9") do |cc|
+    cc.template_depth = 900
+    cc.constexpr_depth = 512
+  end
 
-  Compiler.new(:gcc) { |file|
-    `g++-4.9 -S #{file} -o /dev/null -I ~/code/mpl11/include -std=c++11`
-  }
-
-  # Compiler.new(:clang) do |cc|
-  #   cc.cmd      = "clang++-3.5 -std=c++11"
-  #   cc.include_ = proc { |path| "-I #{path}" }
-  #   cc.output   = proc { |file| "-o #{file}" }
-  #   cc.input    = proc { |file| "-S #{file}" }
-  # end
-
-  # Compiler.new(:gcc) do |cc|
-  #   cc.cmd      = "g++-4.9 -std=c++11"
-  #   cc.include_ = proc { |path| "-I #{path}" }
-  #   cc.output   = proc { |file| "-o #{file}" }
-  #   cc.input    = proc { |file| "-S #{file}" }
-  # end
+  CLANG = Compiler.new("clang++-3.5") do |cc|
+    cc.template_depth = 256
+    cc.constexpr_depth = 512
+  end
 end # module Benchcc
