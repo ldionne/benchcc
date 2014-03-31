@@ -16,6 +16,7 @@ describe Numeric do
         tenths.downto(tenths-9) do |n|
           expect(n.round_up(1)).to eq(tenths)
         end
+        expect((tenths-10).round_up(1)).to eq(tenths-10)
       end
     }
   end

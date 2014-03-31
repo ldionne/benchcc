@@ -3,8 +3,18 @@ require "benchcc/utility"
 
 module Benchcc
   class CompilationError < RuntimeError
-    def initialize(compiler, file, *includes)
+    def initialize(compiler, file)
+      @cli = compiler.cli(file)
+      @code = File.read(file)
+    end
 
+    def to_s
+      <<-EOS
+compilation failed when invoking "#{@cli}":
+#{'-' * 80}
+#{@code}
+#{'-' * 80}
+EOS
     end
   end
 
@@ -29,7 +39,7 @@ module Benchcc
     # of the compiler.
     def compile(filename, *includes)
       `#{cli(filename, *includes)}`
-      raise CompilationError.new(self, filename, *includes) unless $?.success?
+      raise CompilationError.new(self, filename) unless $?.success?
     end
 
     # cli: Path x Paths -> String

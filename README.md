@@ -30,8 +30,3 @@
 - (LOW PRIORITY) Make it possible to modify some attributes through
   the command line. For example, being able to modify the output/input
   sources on the command line could be handy.
-
-- Provide a way to print the benchmarked code; this is super required for
-  debugging.
-
-- Provide a way to print the command line used for a given benchmark.
