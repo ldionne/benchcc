@@ -3,14 +3,19 @@ require "benchcc/utility"
 
 module Benchcc
   class CompilationError < RuntimeError
-    def initialize(command_line, file)
+    def initialize(command_line, file, env = nil)
       @cli = command_line
       @code = File.read(file)
+      @env = env
     end
 
+    attr_accessor :env
+
     def to_s
+      env = "environment was #{@env}" if @env
       <<-EOS
 compilation failed when invoking "#{@cli}":
+#{env}
 #{'-' * 80}
 #{@code}
 #{'-' * 80}
@@ -132,7 +137,12 @@ EOS
     def rtime(file, env)
       code = Utility.from_erb(file, env)
       hints = [File.basename(file), File.extname(file)]
-      return Tempfile.with(code, hints) { |tmp| time(tmp.path) }
+      begin
+        return Tempfile.with(code, hints) { |tmp| time(tmp.path) }
+      rescue CompilationError => e
+        e.env = env
+        raise e
+      end
     end
   end # class Compiler
 

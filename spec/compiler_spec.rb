@@ -26,7 +26,21 @@ describe Benchcc::Compiler do
     it "can time compilation of a ERB template" do
       expect {
         default.rtime(testfile("valid.cpp"), Hash.new)
-        }.not_to raise_error
+      }.not_to raise_error
+    end
+
+    it "handles compilation errors gracefully" do
+      expect {
+        default.compile(testfile("invalid.cpp"))
+      }.to raise_error(Benchcc::CompilationError)
+
+      expect {
+        default.time(testfile("invalid.cpp"))
+      }.to raise_error(Benchcc::CompilationError)
+
+      expect {
+        default.rtime(testfile("invalid.cpp"), Hash.new)
+      }.to raise_error(Benchcc::CompilationError)
     end
   end
 end
