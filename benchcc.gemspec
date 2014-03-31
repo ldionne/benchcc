@@ -11,7 +11,7 @@ Gem::Specification.new do |s|
   s.homepage      = "https://github.com/ldionne/benchcc"
   s.license       = "MIT"
   s.summary       = "A simple DSL for C++ compiler benchmarking automation"
-  s.description   = s.summary
+  s.description   = "Benchcc is a library of Rake tasks to make easier the task of benchmarking C++ compilation"
 
   s.files         = `git ls-files -z`.split("\x0")
   s.platform      = Gem::Platform::RUBY
@@ -19,4 +19,5 @@ Gem::Specification.new do |s|
 
   s.add_dependency "gnuplot", "~> 2.6"
   s.add_dependency "rake", "~> 10.2"
+  s.add_dependency "ruby-progressbar", "~> 1.4"
 end

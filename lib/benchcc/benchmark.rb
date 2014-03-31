@@ -4,6 +4,7 @@ require "benchcc/utility"
 require "gnuplot"
 require "ostruct"
 require "rake"
+require "ruby-progressbar"
 require "set"
 
 
@@ -134,9 +135,13 @@ module Benchcc
     # so it may customize it.
     def plot(inputs)
       enhance do |_, args|
+        inputs = inputs.to_a # Make sure it's not a lazy enumerator.
         cc = args.compiler
         if application.options.trace
           application.trace "** Benchmark #{file} with #{cc}"
+          progress = ProgressBar.create(
+              format: "%t %p%% | %B |",
+              total: all_variants.size * inputs.size)
         end
         Gnuplot.open do |io|
           Gnuplot::Plot.new(io) do |pl|
@@ -148,11 +153,15 @@ module Benchcc
             pl.output name + ".png"
 
             all_variants.each do |variant|
-              data = inputs
-                .map { |x| variant.merge(input: x, compiler: cc) }
+              # Laziness is important for the progress to be updated correctly.
+              data = inputs.lazy
+                .map { |x|
+                  variant.merge(input: x, compiler: cc)
+                         .tap { progress.increment if progress }
+                }
                 .select(&method(:enabled?))
                 .map { |ctx| [ctx[:input], cc.rtime(file, ctx).real] }
-                .transpose
+                .to_a.transpose
 
               pl.data << Gnuplot::DataSet.new(data) { |ds|
                 ds.with = "lines"
