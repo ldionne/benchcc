@@ -68,22 +68,40 @@ module Benchcc
       Utility.hash_product(@variants)
     end
 
-    # Micro-DSL to register a predicate under certain conditions.
-    #
-    # Specifically, `if_ { condition } .then_require { predicate }`
-    # is equivalent to registering a predicate that is true whenever
-    # `condition` is not satisfied, and that forwards to `predicate`
-    # otherwise.
-    def if_(&condition)
+
+  private
+    def if_then_require(&condition)
       bm, r = self, Object.new
       r.define_singleton_method(:then_require) do |&predicate|
-        bm.requires { |*args, **kw|
-          condition.call(*args, **kw) ? predicate.call(*args, **kw) : true
+        bm.requires { |*args|
+          condition.call(*args) ? predicate.call(*args) : true
         }
-        return nil # `bm.requires` returns `bm`, which would allow method
-                   # chaining and would make the semantics of `if_` ambiguous.
+        # `bm.requires` returns `bm`, which would allow method
+        # chaining and would make the semantics of `if_` ambiguous.
+        return nil
       end
       return r
+    end
+
+  public
+    # Micro-DSL to register a predicate under certain conditions.
+    #
+    # if_(key: value, ...) { |env| condition }.then_require { |env| predicate }
+    #   Requires the predicate if `value === env[key]` and if the `condition`
+    #   is satisfied. If no keys are specified, only the condition is
+    #   considered. If no condition is provided, it defaults to true.
+    #   However, either keys or a condition must be specified.
+    def if_(**variants, &condition)
+      if variants.empty? && !block_given?
+        raise ArgumentError, "if_ may not be called without arguments"
+      end
+      return if_then_require(&condition) if variants.empty?
+
+      condition ||= proc { true }
+      if_ { |env|
+        condition.call(env) &&
+        variants.any? { |key, value| value === env[key.to_sym] }
+      }
     end
 
     # requires: Proc -> self

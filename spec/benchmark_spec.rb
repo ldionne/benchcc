@@ -10,9 +10,7 @@ def testfile(name)
 end
 
 describe Benchcc::Benchmark do
-  before(:each) do
-    Rake::Task.clear
-  end
+  before(:each) { Rake::Task.clear }
 
   describe "input_file" do
     context "is set explicitly" do
@@ -85,17 +83,70 @@ describe Benchcc::Benchmark do
   end
 
   describe "if_" do
-    before {
-      @bm = Benchcc.benchmark "test" do |bm|
-        bm.if_ { |env| env.param1 }.then_require { |env| env.param2 }
-      end
-    }
+    it "raises when called without arguments" do
+      expect { Benchcc.benchmark("test") { |bm| bm.if_ } }.to raise_error
+    end
 
-    it "considers the predicate only when the condition is satisfied" do
-      expect(@bm.enabled? Hash.new).to be_true
-      expect(@bm.enabled?({param2: false})).to be_true
-      expect(@bm.enabled?({param1: true, param2: true})).to be_true
-      expect(@bm.enabled?({param1: true, param2: false})).to be_false
+    context "key:value strict" do
+      before {
+        @bm = Benchcc.benchmark "test" do |bm|
+          bm.if_(:key1 => :value1, :key2 => :value2).then_require { false }
+        end
+      }
+
+      it do
+        expect(@bm.enabled? Hash.new).to be_true
+
+        expect(@bm.enabled? key1: :foo).to be_true
+        expect(@bm.enabled? key1: :value1).to be_false
+
+        expect(@bm.enabled? key2: :foo).to be_true
+        expect(@bm.enabled? key2: :value2).to be_false
+
+        expect(@bm.enabled? key1: :foo,    key2: :foo).to be_true
+        expect(@bm.enabled? key1: :foo,    key2: :value2).to be_false
+        expect(@bm.enabled? key1: :value1, key2: :foo).to be_false
+        expect(@bm.enabled? key1: :value1, key2: :value2).to be_false
+      end
+    end
+
+    context "key:value loose" do
+      before {
+        @bm = Benchcc.benchmark "test" do |bm|
+          bm.if_(key1: /1$/, key2: /2$/).then_require { false }
+        end
+      }
+
+      it do
+        expect(@bm.enabled? Hash.new).to be_true
+
+        expect(@bm.enabled? key1: :foo).to be_true
+        expect(@bm.enabled? key1: :foo1).to be_false
+
+        expect(@bm.enabled? key2: :foo).to be_true
+        expect(@bm.enabled? key2: :foo2).to be_false
+
+        expect(@bm.enabled? key1: :foo,  key2: :foo).to be_true
+        expect(@bm.enabled? key1: :foo,  key2: :foo2).to be_false
+        expect(@bm.enabled? key1: :foo1, key2: :foo).to be_false
+        expect(@bm.enabled? key1: :foo1, key2: :foo2).to be_false
+      end
+    end
+
+    context "condition only" do
+      before {
+        @bm = Benchcc.benchmark "test" do |bm|
+          bm.if_ { |env| env.param1 }.then_require { |env| env.param2 }
+        end
+      }
+
+      it "considers the predicate only when the condition is satisfied" do
+        expect(@bm.enabled? Hash.new).to be_true
+        expect(@bm.enabled?({param1: false})).to be_true
+        expect(@bm.enabled?({param2: false})).to be_true
+        expect(@bm.enabled?({param1: true, param2: true})).to be_true
+        expect(@bm.enabled?({param1: true, param2: false})).to be_false
+      end
     end
   end
 
