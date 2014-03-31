@@ -13,50 +13,46 @@ describe Benchcc::Benchmark do
     Rake::Task.clear
   end
 
-  describe "file" do
+  describe "input_file" do
     context "is set explicitly" do
       before {
         @bm = Benchcc.benchmark "test" do |bm|
-          bm.file = "filename"
+          bm.input_file = "filename"
         end
       }
 
       it "returns the specified filename" do
-        expect(@bm.file).to eq("filename")
+        expect(@bm.input_file).to eq("filename")
       end
     end
 
-    context "is guessed" do
-      context "when the benchmark name references a valid file" do
-        before { @bm = Benchcc.benchmark testfile("valid") }
+    context "it is not set explicitly" do
+      before { @bm = Benchcc.benchmark "test" }
 
-        it "just works" do
-          expect(File.identical?(@bm.file, testfile("valid.cpp"))).to be_true
-        end
+      it "defaults to the name of the task" do
+        expect(@bm.input_file).to eq(@bm.name)
       end
+    end
+  end
 
-      context "when the benchmark name references no file at all" do
-        before { @bm = Benchcc.benchmark testfile("does_not_exist") }
-
-        it "throws an exception" do
-          expect { @bm.file }.to raise_error
+  describe "output_chart" do
+    context "is set explicitly" do
+      before {
+        @bm = Benchcc.benchmark "test" do |bm|
+          bm.output_chart = "chartfile"
         end
+      }
+
+      it "returns the specified filename" do
+        expect(@bm.output_chart).to eq("chartfile")
       end
+    end
 
-      context "when the benchmark name is ambiguous" do
-        before { @bm = Benchcc.benchmark testfile("ambiguous") }
+    context "it is not set explicitly" do
+      before { @bm = Benchcc.benchmark "test" }
 
-        it "throws an exception" do
-          expect { @bm.file }.to raise_error(Benchcc::AmbiguousFilename)
-        end
-      end
-
-      context "when the benchmark name references an invalid file" do
-        before { @bm = Benchcc.benchmark testfile("invalid") }
-
-        it "throws an exception" do
-          expect { @bm.file }.to raise_error
-        end
+      it "defaults to the input_file with a png extension" do
+        expect(@bm.output_chart).to eq("test.png")
       end
     end
   end
@@ -132,7 +128,7 @@ describe Benchcc::Benchmark do
 
   describe "plot" do
     before {
-      @bm = Benchcc.benchmark testfile("valid") do |bm|
+      @bm = Benchcc.benchmark testfile("valid.cpp") do |bm|
         bm.variant :variant1, [:value1, :value2]
         bm.plot 0.upto 1
       end

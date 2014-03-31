@@ -9,18 +9,6 @@ require "set"
 
 
 module Benchcc
-  class AmbiguousFilename < StandardError
-    def initialize(pattern, matches)
-      @pattern = pattern
-      @matches = matches
-    end
-
-    def to_s
-      "filename cannot be determined unambiguously "\
-                                      "(\"#{@pattern}\" matched #{@matches})"
-    end
-  end
-
   class Benchmark < Rake::Task
     def initialize(*args)
       super *args
@@ -28,24 +16,26 @@ module Benchcc
       @predicates = []
     end
 
-    # file: String
+    # input_file: String
     #
-    # Path of the file where the benchmark is implemented.
-    #
-    # By default, the file is `name.*`, where `name` is the name of the
-    # benchmark. If that glob pattern matches more than one file, then it
-    # is ambiguous and `file` must be specified explicitly.
-    def file
-      unless @file
-        matches = Dir["#{name}.*"]
-        raise AmbiguousFilename.new("#{name}.*", matches) if matches.size > 1
-        @file = matches.first
-        raise "\"#{@file}\" is not a valid file" unless File.file? @file
-      end
-      return @file
+    # Path of the file where the benchmark is implemented. Defaults to
+    # the name of the task.
+    def input_file
+      @input_file || name
     end
 
-    attr_writer :file
+    attr_writer :input_file
+
+    # output_chart: String
+    #
+    # Path of the file where the plot should be written. Defaults to
+    # `input_file`, except with a different extension suitable for the
+    # graph content.
+    def output_chart
+      @output_chart || input_file.chomp(File.extname(input_file)) + ".png"
+    end
+
+    attr_writer :output_chart
 
     # variant: String x Values -> Nil
     #
@@ -138,7 +128,7 @@ module Benchcc
         inputs = inputs.to_a # Make sure it's not a lazy enumerator.
         cc = args.compiler
         if application.options.trace
-          application.trace "** Benchmark #{file} with #{cc}"
+          application.trace "** Benchmark #{input_file} with #{cc}"
           progress = ProgressBar.create(
               format: "%t %p%% | %B |",
               total: all_variants.size * inputs.size)
@@ -150,7 +140,7 @@ module Benchcc
             pl.ylabel "Compilation time"
             pl.format 'y "%f s"'
             pl.term   "png"
-            pl.output name + ".png"
+            pl.output output_chart
 
             all_variants.each do |variant|
               # Laziness is important for the progress to be updated correctly.
@@ -160,7 +150,7 @@ module Benchcc
                          .tap { progress.increment if progress }
                 }
                 .select(&method(:enabled?))
-                .map { |ctx| [ctx[:input], cc.rtime(file, ctx).real] }
+                .map { |ctx| [ctx[:input], cc.rtime(input_file, ctx).real] }
                 .to_a.transpose
 
               pl.data << Gnuplot::DataSet.new(data) { |ds|
