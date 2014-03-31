@@ -1,4 +1,5 @@
 require "benchcc/benchmark"
+require "benchcc/compiler"
 
 require "rake"
 require "rspec"
@@ -128,7 +129,8 @@ describe Benchcc::Benchmark do
 
   describe "plot" do
     before {
-      @bm = Benchcc.benchmark testfile("valid.cpp") do |bm|
+      @valid_cpp, @valid_png = testfile("valid.cpp"), testfile("valid.png")
+      @bm = Benchcc.benchmark @valid_cpp do |bm|
         bm.variant :variant1, [:value1, :value2]
         bm.plot 0.upto 1
       end
@@ -136,26 +138,22 @@ describe Benchcc::Benchmark do
 
     context "with specified compiler" do
       it "creates a pretty graph" do
-        args = Rake::TaskArguments.new([:compiler], [Benchcc::GCC])
+        args = Rake::TaskArguments.new([:compiler], [:default])
         expect { @bm.execute(args) }.not_to raise_error
-        expect(File.file? testfile("valid.png")).to be_true
+        expect(File.file? @valid_png).to be_true
       end
     end
 
-    context "with default compiler" do
+    context "without specifying a compiler" do
       it "creates a pretty graph" do
         expect { @bm.execute }.not_to raise_error
-        expect(File.file? testfile("valid.png")).to be_true
+        expect(File.file? @valid_cpp).to be_true
       end
     end
 
-    after {
-      File.delete(testfile("valid.png")) if File.exists? testfile("valid.png")
-    }
+    after { File.delete(@valid_png) if File.exists? @valid_png }
   end
 end
-
-
 
 =begin
 describe Benchcc::Config do

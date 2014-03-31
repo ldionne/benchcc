@@ -9,7 +9,13 @@ require "set"
 
 
 module Benchcc
+  # Rake task for benchmarking the compilation of a file.
+  #
+  # A benchmark task takes one optional argument named `:compiler`. It
+  # represents the compiler to use for benchmarking, and it defaults
+  # to the `:default` compiler.
   class Benchmark < Rake::Task
+    # Use the `benchmark` method to create `Benchmark`s, not this.
     def initialize(*args)
       super *args
       @variants = Hash.new
@@ -126,13 +132,15 @@ module Benchcc
     def plot(inputs)
       enhance do |_, args|
         inputs = inputs.to_a # Make sure it's not a lazy enumerator.
-        cc = args.compiler
+        cc = Compiler[args.compiler]
+
         if application.options.trace
           application.trace "** Benchmark #{input_file} with #{cc}"
           progress = ProgressBar.create(
               format: "%t %p%% | %B |",
               total: all_variants.size * inputs.size)
         end
+
         Gnuplot.open do |io|
           Gnuplot::Plot.new(io) do |pl|
             pl.title  "#{name} with #{cc}"
@@ -166,17 +174,19 @@ module Benchcc
     end
   end # class Benchmark
 
+  # Create a benchmark with the given name.
+  #
+  # If a block is given, the benchmark object is yielded to it so
+  # the benchmark attributes can be populated.
   def benchmark(name)
     bm = Benchmark.define_task(name, [:compiler]) do |_, args|
-      args.with_defaults(compiler: CLANG)
+      args.with_defaults(compiler: :default)
     end
-
     yield bm if block_given?
     return bm
   end
   module_function :benchmark
 end # module Benchcc
-
 
 =begin
 

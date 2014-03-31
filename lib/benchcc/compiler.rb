@@ -3,8 +3,8 @@ require "benchcc/utility"
 
 module Benchcc
   class CompilationError < RuntimeError
-    def initialize(compiler, file)
-      @cli = compiler.cli(file)
+    def initialize(command_line, file)
+      @cli = command_line
       @code = File.read(file)
     end
 
@@ -18,72 +18,168 @@ EOS
     end
   end
 
+  # This class contains the interface of compiler frontends.
+  #
+  # It also manages the registration of new compiler frontends. To register
+  # a new compiler frontend, simply create a new instance of `Compiler`
+  # implementing the required methods (they are documented) and you are done.
+  #
+  # A default compiler frontend is provided; it is taken to have a GCC-like
+  # frontend and it uses the `cc` binary. This works at least on OS X 10.9.
   class Compiler
-    # Create a new compiler whose binary is located at `bin`.
-    def initialize(bin)
-      @cc = bin
+    @@compilers = Hash.new
+
+    # Compiler.list: Compilers
+    #
+    # Returns an array of the currently registered compilers.
+    def self.list
+      @@compilers.values
+    end
+
+    # Compiler[]: String or Symbol -> Compiler
+    #
+    # Returns the compiler associated to the given id.
+    def self.[](id)
+      if !@@compilers.has_key? id.to_sym
+        raise ArgumentError, "unknown compiler #{id}"
+      end
+      @@compilers[id.to_sym]
+    end
+
+    # Compiler[]=: String or Symbol x Compiler -> Compiler
+    #
+    # Register a new compiler with the given id.
+    def self.[]=(id, compiler)
+      if @@compilers.has_key? id.to_sym
+        raise ArgumentError,
+              "overwriting existing compiler #{id} with #{compiler}"
+      end
+      @@compilers[id.to_sym] = compiler
+    end
+
+    # initialize: String or Symbol -> Compiler
+    #
+    # Create and register a new compiler with the given id. If a block is
+    # given, `self` is yielded to it so the remaining attributes may be
+    # populated.
+    def initialize(id)
+      @id = id.to_sym
+      Compiler[@id] = self
       yield self if block_given?
     end
 
+    # id: Symbol
+    #
+    # A symbol uniquely identifying a given compiler.
+    #
+    # In most cases, it should be something carrying the name and the
+    # version of the compiler. For example, an identifier for Clang v3.5
+    # could be clang35.
+    attr_reader :id
+
     # Maximum template recursion depth supported by the compiler.
-    attr_accessor :template_depth
+    # This must be set explicitly.
+    def template_depth
+      @template_depth || (raise NotImplementedError)
+    end
+    attr_writer :template_depth
 
     # Maximum constexpr recursion depth supported by the compiler.
-    attr_accessor :constexpr_depth
+    # This must be set explicitly.
+    def constexpr_depth
+      @constexpr_depth || (raise NotImplementedError)
+    end
+    attr_writer :constexpr_depth
 
-    # compile: Path x Paths -> Nil
+    # cli: Path -> String
     #
-    # Compile the specified file.
-    #
-    # If include paths are given, they are added to the header search paths
-    # of the compiler.
-    def compile(filename, *includes)
-      `#{cli(filename, *includes)}`
-      raise CompilationError.new(self, filename) unless $?.success?
+    # Return the command line needed to compile the given file.
+    # This must be implemented in subclasses.
+    def cli(file)
+      raise NotImplementedError
     end
 
-    # cli: Path x Paths -> String
+    # Show the name and the version of the compiler.
+    # This must be implemented in subclasses.
+    def to_s
+      raise NotImplementedError
+    end
+
+    # compile: Path -> Nil
     #
-    # Return the command line that would be executed to compile the
-    # given file with the given include paths.
-    def cli(filename, *includes)
-      includes = includes.map(&"-I ".method(:+)).join(" ")
-      warnings = ["-Wall", "-Wextra", "-pedantic"].join(" ")
-      "#{@cc} -o /dev/null -std=c++11 #{warnings} #{includes} #{filename}"
+    # Compile the given file.
+    #
+    # By default, executes the result of `cli(file)`. A `CompilationError`
+    # is raised if the compilation fails for whatever reason.
+    def compile(file)
+      `#{cli(file)}`
+      raise CompilationError.new(cli(file), file) unless $?.success?
+    end
+
+    # time: Path -> ::Benchmark.Tms
+    #
+    # Time the compilation of the given file.
+    def time(file)
+      stats = Utility.time { compile(file) }
+      stats.instance_variable_set(:@label, to_s)
+      return stats
     end
 
     # rtime: Path x Hash or OpenStruct -> ::Benchmark.Tms
     #
     # Equivalent to `time`, except the file is taken to be an ERB template
-    # to be generated before compiling.
+    # that is generated with the given environment before compiling.
     def rtime(file, env)
       code = Utility.from_erb(file, env)
       hints = [File.basename(file), File.extname(file)]
       return Tempfile.with(code, hints) { |tmp| time(tmp.path) }
     end
-
-    # time: ... -> ::Benchmark.Tms
-    #
-    # Time the `compile` method with the given arguments.
-    def time(*args)
-      stats = Utility.time { compile(*args) }
-      stats.instance_variable_set(:@label, to_s)
-      return stats
-    end
-
-    # Show the name and the version of the compiler.
-    def to_s
-      `#{@cc} --version`.lines.first.strip
-    end
   end # class Compiler
 
-  GCC = Compiler.new("g++-4.9") do |cc|
-    cc.template_depth = 900
-    cc.constexpr_depth = 512
-  end
 
-  CLANG = Compiler.new("clang++-3.5") do |cc|
-    cc.template_depth = 256
-    cc.constexpr_depth = 512
+  # Class for compilers with a GCC-like frontend.
+  #
+  # This covers at least GCC and Clang.
+  class GccFrontend < Compiler
+    def initialize(id)
+      super id
+      @wflags = []
+      @includes = []
+      yield self if block_given?
+    end
+
+    # binary: String
+    #
+    # Path of the compiler binary on the system.
+    # This must be set explicitly.
+    attr_accessor :binary
+
+    # wflags: Strings (opt)
+    #
+    # Array of strings representing warning flags. For example,
+    # `gcc.wflags = %w{-Wall -Wextra -pedantic}`.
+    attr_accessor :wflags
+
+    # includes: Strings (opt)
+    #
+    # Array of strings representing include paths. For example,
+    # `gcc.includes = %w{~/my/lib/include /usr/local/include}`.
+    attr_accessor :includes
+
+    def cli(file)
+      incl = includes.map(&"-I ".method(:+)).join(" ")
+      warn = wflags.join(" ")
+      "#{binary} -o /dev/null -std=c++11 #{warn} #{incl} #{file}"
+    end
+
+    def to_s
+      `#{binary} --version`.lines.first.strip
+    end
+  end # class GccFrontend
+
+  GccFrontend.new :default do |cc|
+    cc.template_depth = 256   # these are complete guesses
+    cc.constexpr_depth = 256
+    cc.binary = "cc"
   end
 end # module Benchcc
