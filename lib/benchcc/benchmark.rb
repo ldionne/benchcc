@@ -134,6 +134,42 @@ module Benchcc
       !enabled? context
     end
 
+  private
+    # Generate datasets for every valid combination of benchmark parameters.
+    #
+    # An array of `[variant, dataset]` is returned, where `variant` is a valid
+    # combination of benchmark parameters and `dataset` is the result of
+    # calling the block with an environment consisting of `variant` augmented
+    # with the compiler and the input for every input in `inputs`.
+    #
+    # TODO:
+    # Refactor this further. We probably want to get rid of the `cc` argument.
+    def gather_datasets(inputs, cc, &ys)
+      # Make sure we don't over consume a lazy iterator.
+      inputs = inputs.to_a
+      if application.options.trace
+        application.trace "** Benchmark #{input_file} with #{cc}"
+        progress = ProgressBar.create(
+            format: "%t %p%% | %B |",
+            total: all_variants.size * inputs.size)
+      end
+
+      all_variants.map { |variant|
+        data = inputs.lazy
+          .map { |x| variant.merge(input: x, compiler: cc)
+                            .tap { progress.increment if progress } }
+          .select(&method(:enabled?))
+          .map { |ctx| ys.call(ctx) }
+        [variant, data]
+      }
+    end
+
+    # Equivalent to `gather_datasets`, except the datasets are not lazy.
+    def gather_datasets!(inputs, cc, &ys)
+      gather_datasets(inputs, cc, &ys).map! { |ctx, data| [ctx, data.to_a] }
+    end
+
+  public
     # plot: Integers -> Nil
     #
     # Plot compilation time statistics.
@@ -149,15 +185,13 @@ module Benchcc
     # so it may customize it.
     def plot(inputs)
       enhance do |_, args|
-        inputs = inputs.to_a # Make sure it's not a lazy enumerator.
         cc = Compiler[args.compiler]
-
-        if application.options.trace
-          application.trace "** Benchmark #{input_file} with #{cc}"
-          progress = ProgressBar.create(
-              format: "%t %p%% | %B |",
-              total: all_variants.size * inputs.size)
-        end
+        # We gather the datasets before opening the Gnuplot process to avoid
+        # keeping the process open while we benchmark. I'm not sure whether
+        # that really changes something, though.
+        datasets = gather_datasets!(inputs, cc) { |ctx|
+          [ctx[:input], cc.rtime(input_file, ctx).real]
+        }
 
         Gnuplot.open do |io|
           Gnuplot::Plot.new(io) do |pl|
@@ -168,22 +202,14 @@ module Benchcc
             pl.term   "png"
             pl.output output_chart
 
-            all_variants.each do |variant|
-              # Laziness is important for the progress to be updated correctly.
-              data = inputs.lazy
-                .map { |x|
-                  variant.merge(input: x, compiler: cc)
-                         .tap { progress.increment if progress }
-                }
-                .select(&method(:enabled?))
-                .map { |ctx| [ctx[:input], cc.rtime(input_file, ctx).real] }
-                .to_a.transpose
-
-              pl.data << Gnuplot::DataSet.new(data) { |ds|
+            datasets.each { |ctx, dataset|
+              # We transpose because Gnuplot expects datasets to be of
+              # the form `[[x...], [y...]]` instead of `[[x, y]...]`.
+              pl.data << Gnuplot::DataSet.new(dataset.transpose) { |ds|
                 ds.with = "lines"
-                ds.title = variant.values.map(&:to_s).join("_")
-              } unless data.empty?
-            end
+                ds.title = ctx.values.map(&:to_s).join("_")
+              } unless dataset.empty?
+            }
 
             yield pl if block_given?
           end
