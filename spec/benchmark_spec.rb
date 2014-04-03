@@ -71,7 +71,7 @@ describe Benchcc::Benchmark do
     end
   end
 
-  describe "requires" do
+  describe "require_" do
     context "no predicates are registered" do
       before { @bm = Benchcc.benchmark "test" }
 
@@ -83,8 +83,8 @@ describe Benchcc::Benchmark do
     context "predicates are registered" do
       before {
         @bm = Benchcc.benchmark "test" do |bm|
-          bm.requires { |env| env.param1 }
-          bm.requires { |env| env.param2 }
+          bm.require_ { |env| env.param1 }
+          bm.require_ { |env| env.param2 }
         end
       }
 
@@ -99,7 +99,7 @@ describe Benchcc::Benchmark do
     context "key/value pairs are used in place of a predicate" do
       before {
         @bm = Benchcc.benchmark "test" do |bm|
-          bm.requires(key1: /1$/, key2: :value2)
+          bm.require_(key1: /1$/, key2: :value2)
         end
       }
 
@@ -124,7 +124,7 @@ describe Benchcc::Benchmark do
     context "key:value strict" do
       before {
         @bm = Benchcc.benchmark "test" do |bm|
-          bm.if_(:key1 => :value1, :key2 => :value2).then_require { false }
+          bm.if_(:key1 => :value1, :key2 => :value2).require_ { false }
         end
       }
 
@@ -147,7 +147,7 @@ describe Benchcc::Benchmark do
     context "key:value loose" do
       before {
         @bm = Benchcc.benchmark "test" do |bm|
-          bm.if_(key1: /1$/, key2: /2$/).then_require { false }
+          bm.if_(key1: /1$/, key2: /2$/).require_ { false }
         end
       }
 
@@ -170,7 +170,7 @@ describe Benchcc::Benchmark do
     context "condition only" do
       before {
         @bm = Benchcc.benchmark "test" do |bm|
-          bm.if_ { |env| env.param1 }.then_require { |env| env.param2 }
+          bm.if_ { |env| env.param1 }.require_ { |env| env.param2 }
         end
       }
 
@@ -180,6 +180,28 @@ describe Benchcc::Benchmark do
         expect(@bm.enabled?({param2: false})).to be_true
         expect(@bm.enabled?({param1: true, param2: true})).to be_true
         expect(@bm.enabled?({param1: true, param2: false})).to be_false
+      end
+    end
+
+    context "mixed usages" do
+      context do
+        before {
+          @bm = Benchcc.benchmark "test" do |bm|
+            bm.if_ { |env| env.k1 }
+              .require_ { |env| env.k2 }
+              .require_ { |env| env.k3 }
+          end
+        }
+
+        it do
+          expect(@bm.enabled? Hash.new).to be_true
+          expect(@bm.enabled?({k1: false})).to be_true
+
+          expect(@bm.enabled?({k1: true, k2: true, k3: true})).to be_true
+          expect(@bm.enabled?({k1: true, k2: false, k3: true})).to be_false
+          expect(@bm.enabled?({k1: true, k2: true, k3: false})).to be_false
+          expect(@bm.enabled?({k1: true, k2: false, k3: false})).to be_false
+        end
       end
     end
   end

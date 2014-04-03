@@ -53,7 +53,7 @@ module Benchcc
     # different values. When the benchmark is run, the actions associated
     # with it can access all the possible combinations of those variables.
     # Since some combinations may be nonsensical, a filter may be applied
-    # and only the valid combinations are kept (see `requires` for details).
+    # and only the valid combinations are kept (see `require_` for details).
     #
     # If `variant` is called with the name of a variable that already exists,
     # the possible values of the variable are merged with the new ones.
@@ -78,28 +78,40 @@ module Benchcc
     # If `key => value` pairs are given, they are merged into the environment.
     # If a block is given, it is called with the environment before any filter
     # is applied to the benchmark variants and it should return the modified
-    # environment to use for the benchmark.
+    # environment to use for the benchmark. Either keys or a block must be
+    # provided.
     #
     # If this method is called several times, the modifications to perform on
     # the environment are all performed in their registration order.
     def env(**keys, &modifs)
-      modifs ||= proc { |env| env }
+      if keys.empty? && !block_given?
+        raise ArgumentError, "env may not be called without arguments"
+      end
+
+      modifs ||= proc { |e| e }
       tmp = @modifs.dup
-      @modifs = -> (env) { modifs.call(tmp.call(env).merge(keys)) }
+      @modifs = -> (e) { modifs.call(tmp.call(e).merge(keys)) }
     end
 
   private
-    def if_then_require(&condition)
-      bm, r = self, Object.new
-      r.define_singleton_method(:then_require) do |&predicate|
-        bm.requires { |*args|
-          condition.call(*args) ? predicate.call(*args) : true
-        }
-        # `bm.requires` returns `bm`, which would allow method
-        # chaining and would make the semantics of `if_` ambiguous.
-        return nil
+    class If
+      def initialize(bm, &condition)
+        @bm = bm
+        @condition = condition
       end
-      return r
+
+      def require_(**variants, &predicate)
+        @bm.require_ { |*args|
+          @condition.call(*args) ? predicate.call(*args) : true
+        }
+        return self
+      end
+
+      def env(**keys, &modifs)
+        modifs ||= proc { |e| e }
+        @bm.env { |e| @condition.call(e) ? modifs.call(e.merge(keys)) : e }
+        return self
+      end
     end
 
   public
@@ -115,7 +127,7 @@ module Benchcc
       if variants.empty? && !block_given?
         raise ArgumentError, "if_ may not be called without arguments"
       end
-      return if_then_require(&condition) if variants.empty?
+      return If.new(self, &condition) if variants.empty?
 
       condition ||= proc { true }
       if_ { |env|
@@ -124,7 +136,7 @@ module Benchcc
       }
     end
 
-    # requires(key: value, ...) { |env| predicate }
+    # require_(key: value, ...) { |env| predicate }
     #
     # Specify conditions that must be met in order for the benchmark
     # to be enabled.
@@ -139,9 +151,9 @@ module Benchcc
     # registered predicates are satisfied.
     #
     # Returns self to allow chaining methods.
-    def requires(**variants, &predicate)
+    def require_(**variants, &predicate)
       if variants.empty? && !block_given?
-        raise ArgumentError, "requires may not be called without arguments"
+        raise ArgumentError, "require_ may not be called without arguments"
       end
 
       predicate ||= proc { true }
