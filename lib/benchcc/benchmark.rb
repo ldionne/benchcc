@@ -20,6 +20,7 @@ module Benchcc
       super *args
       @variants = Hash.new
       @predicates = []
+      @modifs = proc { |env| env }
     end
 
     # input_file: String
@@ -69,6 +70,23 @@ module Benchcc
       Utility.hash_product(@variants)
     end
 
+    # env: Hash x Proc -> Nil
+    #
+    # Specify modifications to perform on the environment before the
+    # benchmark is run.
+    #
+    # If `key => value` pairs are given, they are merged into the environment.
+    # If a block is given, it is called with the environment before any filter
+    # is applied to the benchmark variants and it should return the modified
+    # environment to use for the benchmark.
+    #
+    # If this method is called several times, the modifications to perform on
+    # the environment are all performed in their registration order.
+    def env(**keys, &modifs)
+      modifs ||= proc { |env| env }
+      tmp = @modifs.dup
+      @modifs = -> (env) { modifs.call(tmp.call(env).merge(keys)) }
+    end
 
   private
     def if_then_require(&condition)
@@ -174,6 +192,7 @@ module Benchcc
         data = inputs.lazy
           .map { |x| variant.merge(input: x, compiler: cc)
                             .tap { progress.increment if progress } }
+          .map(&@modifs)
           .select(&method(:enabled?))
           .map { |ctx| ys.call(ctx) }
         [variant, data]
@@ -247,26 +266,3 @@ module Benchcc
   end
   module_function :benchmark
 end # module Benchcc
-
-=begin
-
-module Benchcc
-  class Config
-    # env: Hash x Proc -> Nil
-    #
-    # Specify modifications to perform on the environment before the
-    # configuration is benchmarked.
-    #
-    # If `key => value` pairs may are passed to the method, they are merged
-    # into the environment. If a block is given, it is called with the
-    # environment before the config is benchmarked and may return it modified.
-    # If the method is called several times, the modifications to perform on
-    # the environment are all performed in their registration order.
-    def env(**keys, &modifs)
-      modifs ||= proc { |env| env }
-      @modifs << -> (env) { modifs.call(env.merge(keys)) }
-    end
-  end # class Technique
-end # module Benchcc
-
-=end
