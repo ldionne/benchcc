@@ -1,4 +1,5 @@
 require "benchcc/benchmark"
+require "benchcc/benchmark_suite"
 require "benchcc/compiler"
 require "benchcc/dsl"
 require "benchcc/version"

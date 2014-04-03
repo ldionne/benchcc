@@ -25,9 +25,10 @@ module Benchcc
     # input_file: String
     #
     # Path of the file where the benchmark is implemented. Defaults to
-    # the name of the task.
+    # `scope/of/the/task/name_of_the_task`, where the scope refers to the
+    # scope in which the task is defined (see Rake namespaces).
     def input_file
-      @input_file || name
+      @input_file || File.join(*name.split(":"))
     end
 
     attr_writer :input_file

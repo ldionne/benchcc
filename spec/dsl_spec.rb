@@ -5,7 +5,10 @@ require "rspec"
 
 describe Benchcc::DSL do
   it {
-    expect(Benchcc::DSL.instance_methods).to eq([:benchmark])
+    expect(Benchcc::DSL.instance_methods).to eq([
+      :benchmark,
+      :benchmark_suite
+    ])
   }
 end
 
@@ -14,5 +17,6 @@ end
 # up, which is good enough.
 def use_at_global_scope
   benchmark "test"
+  benchmark_suite "test_suite"
 end
 use_at_global_scope

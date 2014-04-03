@@ -25,12 +25,27 @@ describe Benchcc::Benchmark do
       end
     end
 
-    context "it is not set explicitly" do
+    context "top level benchmark" do
       before { @bm = Benchcc.benchmark "test" }
+      it { expect(@bm.input_file).to eq("test") }
+    end
 
-      it "defaults to the name of the task" do
-        expect(@bm.input_file).to eq(@bm.name)
-      end
+    context "1-deep nested benchmark" do
+      before {
+        extend Rake::DSL
+        namespace(:d1) { @bm = Benchcc.benchmark "test" }
+      }
+      it { expect(@bm.input_file).to eq("d1/test") }
+    end
+
+    context "2-deep nested benchmark" do
+      before {
+        extend Rake::DSL
+        namespace(:d1) {
+          namespace(:d2) { @bm = Benchcc.benchmark "test" }
+        }
+      }
+      it { expect(@bm.input_file).to eq("d1/d2/test") }
     end
   end
 
