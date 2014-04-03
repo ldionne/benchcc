@@ -85,13 +85,14 @@ module Benchcc
     end
 
   public
+    # if_(key: value, ...) { |env| condition }.then_require { |env| predicate }
+    #
     # Micro-DSL to register a predicate under certain conditions.
     #
-    # if_(key: value, ...) { |env| condition }.then_require { |env| predicate }
-    #   Requires the predicate if `value === env[key]` and if the `condition`
-    #   is satisfied. If no keys are specified, only the condition is
-    #   considered. If no condition is provided, it defaults to true.
-    #   However, either keys or a condition must be specified.
+    # Requires the predicate if `value === env[key]` for any key/value pair in
+    # `variants` and if the `condition` is satisfied. If no keys are specified,
+    # only the condition is considered. If no condition is provided, it
+    # defaults to true. However, either keys or a condition must be specified.
     def if_(**variants, &condition)
       if variants.empty? && !block_given?
         raise ArgumentError, "if_ may not be called without arguments"
@@ -105,17 +106,31 @@ module Benchcc
       }
     end
 
-    # requires: Proc -> self
+    # requires(key: value, ...) { |env| predicate }
     #
-    # Register a predicate to be satisfied for the benchmark to be enabled.
+    # Specify conditions that must be met in order for the benchmark
+    # to be enabled.
     #
-    # By default, the benchmark is always enabled. Calling this method several
-    # times will cause the benchmark to be enabled when all the registered
-    # predicates are satisfied.
+    # Enables the benchmark if `value === env[key]` for all keys/values in
+    # `variants` and if the predicate is satisfied. If no keys are specified,
+    # only the predicate is considered. If no predicate is provided, it
+    # defaults to true. However, either keys or a predicate must be provided.
     #
-    # Returns self to allow some useful method chains.
-    def requires(&predicate)
-      @predicates << predicate
+    # By default, the benchmark is always enabled. Calling this method
+    # several times will cause the benchmark to be enabled when all the
+    # registered predicates are satisfied.
+    #
+    # Returns self to allow chaining methods.
+    def requires(**variants, &predicate)
+      if variants.empty? && !block_given?
+        raise ArgumentError, "requires may not be called without arguments"
+      end
+
+      predicate ||= proc { true }
+      @predicates << -> (env) {
+        predicate.call(env) &&
+        variants.all? { |key, value| value === env[key.to_sym] }
+      }
       return self
     end
 
@@ -236,41 +251,7 @@ end # module Benchcc
 =begin
 
 module Benchcc
-  class Benchmark
-    # output_directory: String (opt)
-    #
-    # Directory where the benchmark results should be stored. Defaults to
-    # `suite_output_directory/benchmark_id`.
-    dsl_accessor :output_directory
-  end # class Benchmark
-
   class Config
-    # requires: Hash x Proc -> Nil
-    #
-    # Specify conditions that must be met in order for this configuration to
-    # be enabled.
-    #
-    # If `key => value` pairs are passed to the method, the environment must
-    # include those pairs for the configuration to be enabled. If a block is
-    # given, it is taken as a predicate (to be called on the environment) that
-    # must be satisfied for the configuration to be enabled.
-    #
-    # By default, the configuration is always enabled. Calling this method
-    # several times will cause the configuration to be enabled when all the
-    # registered conditions are satisfied.
-    def requires(**keys, &predicate)
-      predicate ||= proc { true }
-      @predicates << -> (env) { keys.subsetof?(env) && predicate.call(env) }
-    end
-
-    # compiler: Symbol(s) -> Nil
-    #
-    # Require the compiler to be one of the given `compiler_ids` for this
-    # config to be enabled.
-    def compiler(*compiler_ids)
-      self.requires { |env| compiler_ids.include?(env[:compiler]) }
-    end
-
     # env: Hash x Proc -> Nil
     #
     # Specify modifications to perform on the environment before the
@@ -284,17 +265,6 @@ module Benchcc
     def env(**keys, &modifs)
       modifs ||= proc { |env| env }
       @modifs << -> (env) { modifs.call(env.merge(keys)) }
-    end
-
-    # with: Hash -> ...
-    #
-    # Augment the environment with the registered modifications and yield
-    # to the block. This method also augments the environment with
-    # `:config => self.id`.
-    def with(env)
-      env = env.merge(config: self.id)
-      env = @modifs.reduce(env) { |e, modif| modif.call(e) }
-      yield env
     end
   end # class Technique
 end # module Benchcc

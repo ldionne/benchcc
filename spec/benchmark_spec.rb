@@ -72,7 +72,7 @@ describe Benchcc::Benchmark do
   end
 
   describe "requires" do
-    context "no predicate are registered" do
+    context "no predicates are registered" do
       before { @bm = Benchcc.benchmark "test" }
 
       it "is always enabled" do
@@ -94,6 +94,25 @@ describe Benchcc::Benchmark do
         expect(@bm.enabled?({param2: true})).to be_false
         expect(@bm.enabled?({param1: true, param2: true})).to be_true
       end
+    end
+
+    context "key/value pairs are used in place of a predicate" do
+      before {
+        @bm = Benchcc.benchmark "test" do |bm|
+          bm.requires(key1: /1$/, key2: :value2)
+        end
+      }
+
+      it {
+        expect(@bm.enabled? Hash.new).to be_false
+        expect(@bm.enabled?({key1: :ue1})).to be_false
+        expect(@bm.enabled?({key2: :value2})).to be_false
+
+        expect(@bm.enabled?({key1: :foo, key2: :foo})).to be_false
+        expect(@bm.enabled?({key1: :foo, key2: :value2})).to be_false
+        expect(@bm.enabled?({key1: :ue1, key2: :foo})).to be_false
+        expect(@bm.enabled?({key1: :ue1, key2: :value2})).to be_true
+      }
     end
   end
 
