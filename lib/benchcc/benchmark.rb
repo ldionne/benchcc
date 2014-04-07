@@ -70,97 +70,65 @@ module Benchcc
       Utility.hash_product(@variants)
     end
 
-    # env: Hash x Proc -> Nil
-    #
-    # Specify modifications to perform on the environment before the
-    # benchmark is run.
-    #
-    # If `key => value` pairs are given, they are merged into the environment.
-    # If a block is given, it is called with the environment before any filter
-    # is applied to the benchmark variants and it should return the modified
-    # environment to use for the benchmark. Either keys or a block must be
-    # provided.
-    #
-    # If this method is called several times, the modifications to perform on
-    # the environment are all performed in their registration order.
-    def env(**keys, &modifs)
-      if keys.empty? && !block_given?
-        raise ArgumentError, "env may not be called without arguments"
-      end
-
-      modifs ||= proc { |e| e }
-      tmp = @modifs.dup
-      @modifs = -> (e) { modifs.call(tmp.call(e).merge(keys)) }
+  private
+    def self.in_ctx(&predicate)
+      proc { |ctx| ctx.instance_exec(ctx, &predicate) }
     end
 
-  private
     class If
       def initialize(bm, &condition)
+        raise ArgumentError, "a block must be given" unless block_given?
         @bm = bm
-        @condition = condition
+        @condition = Benchmark.in_ctx(&condition)
       end
 
-      def require_(**variants, &predicate)
-        @bm.require_ { |*args|
-          @condition.call(*args) ? predicate.call(*args) : true
-        }
+      def require_(&predicate)
+        raise ArgumentError, "a block must be given" unless block_given?
+        cond, pred = @condition, Benchmark.in_ctx(&predicate)
+        @bm.require_ { |ctx| cond.call(ctx) ? pred.call(ctx) : true }
         return self
       end
 
-      def env(**keys, &modifs)
-        modifs ||= proc { |e| e }
-        @bm.env { |e| @condition.call(e) ? modifs.call(e.merge(keys)) : e }
-        return self
+      def disable
+        require_ { false }
       end
     end
 
   public
-    # if_(key: value, ...) { |env| condition }.then_require { |env| predicate }
+    # Micro-DSL to perform actions under certain conditions.
     #
-    # Micro-DSL to register a predicate under certain conditions.
+    # In the following, blocks are evaluated in the context of the
+    # environment, which means that any method call really is `env.method`.
+    # The blocks are still passed the environment as an argument.
     #
-    # Requires the predicate if `value === env[key]` for any key/value pair in
-    # `variants` and if the `condition` is satisfied. If no keys are specified,
-    # only the condition is considered. If no condition is provided, it
-    # defaults to true. However, either keys or a condition must be specified.
-    def if_(**variants, &condition)
-      if variants.empty? && !block_given?
-        raise ArgumentError, "if_ may not be called without arguments"
-      end
-      return If.new(self, &condition) if variants.empty?
-
-      condition ||= proc { true }
-      if_ { |env|
-        condition.call(env) &&
-        variants.any? { |key, value| value === env[key.to_sym] }
-      }
+    # if_{ condition }.require_ { predicate }
+    #
+    #   Requires the predicate if the `condition` is satisfied.
+    #
+    # if_{ condition }.disable
+    #
+    #   Equivalent to `if_{ condition }.require { false }`.
+    def if_(&condition)
+      If.new(self, &condition)
     end
 
-    # require_(key: value, ...) { |env| predicate }
+    # require_ { predicate }
     #
     # Specify conditions that must be met in order for the benchmark
     # to be enabled.
     #
-    # Enables the benchmark if `value === env[key]` for all keys/values in
-    # `variants` and if the predicate is satisfied. If no keys are specified,
-    # only the predicate is considered. If no predicate is provided, it
-    # defaults to true. However, either keys or a predicate must be provided.
+    # The benchmark is only enabled if `predicate` is satisfied. The block
+    # is evaluated in the context of the environment. It is also passed the
+    # environment as an argument.
     #
     # By default, the benchmark is always enabled. Calling this method
     # several times will cause the benchmark to be enabled when all the
     # registered predicates are satisfied.
     #
     # Returns self to allow chaining methods.
-    def require_(**variants, &predicate)
-      if variants.empty? && !block_given?
-        raise ArgumentError, "require_ may not be called without arguments"
-      end
-
-      predicate ||= proc { true }
-      @predicates << -> (env) {
-        predicate.call(env) &&
-        variants.all? { |key, value| value === env[key.to_sym] }
-      }
+    def require_(&predicate)
+      raise ArgumentError, "a block must be given" unless block_given?
+      @predicates << Benchmark.in_ctx(&predicate)
       return self
     end
 
@@ -254,7 +222,7 @@ module Benchcc
               # the form `[[x...], [y...]]` instead of `[[x, y]...]`.
               pl.data << Gnuplot::DataSet.new(dataset.transpose) { |ds|
                 ds.with = "lines"
-                ds.title = ctx.values.map(&:to_s).join("_")
+                ds.title = ctx.values.select{ |e| e }.map(&:to_s).join("_")
               } unless dataset.empty?
             }
 
