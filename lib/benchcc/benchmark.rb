@@ -20,7 +20,6 @@ module Benchcc
       super *args
       @variants = Hash.new
       @predicates = []
-      @modifs = proc { |env| env }
     end
 
     # input_file: String
@@ -149,15 +148,23 @@ module Benchcc
     end
 
   private
+    # Perform an action on each input in a given context.
+    #
+    # Contexts in which the benchmark is disabled are skipped.
+    def each_input(variant, inputs, cc, progressbar = nil, &ys)
+      inputs.lazy
+            .map { |x| variant.merge(input: x, compiler: cc)
+                              .tap { progressbar.increment if progressbar } }
+            .select(&method(:enabled?))
+            .map { |ctx| ys.call(ctx) }
+    end
+
     # Generate datasets for every valid combination of benchmark parameters.
     #
     # An array of `[variant, dataset]` is returned, where `variant` is a valid
     # combination of benchmark parameters and `dataset` is the result of
     # calling the block with an environment consisting of `variant` augmented
     # with the compiler and the input for every input in `inputs`.
-    #
-    # TODO:
-    # Refactor this further. We probably want to get rid of the `cc` argument.
     def gather_datasets(inputs, cc, &ys)
       # Make sure we don't over consume a lazy iterator.
       inputs = inputs.to_a
@@ -169,13 +176,7 @@ module Benchcc
       end
 
       all_variants.map { |variant|
-        data = inputs.lazy
-          .map { |x| variant.merge(input: x, compiler: cc)
-                            .tap { progress.increment if progress } }
-          .map(&@modifs)
-          .select(&method(:enabled?))
-          .map { |ctx| ys.call(ctx) }
-        [variant, data]
+        [variant, each_input(variant, inputs, cc, progress, &ys)]
       }
     end
 
