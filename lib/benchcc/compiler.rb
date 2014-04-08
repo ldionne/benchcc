@@ -179,7 +179,7 @@ EOS
     def cli(file)
       incl = includes.map(&"-I ".method(:+)).join(" ")
       warn = wflags.join(" ")
-      "#{binary} -o /dev/null -std=c++11 #{warn} #{incl} #{file}"
+      "#{binary} -o /dev/null -std=c++11 #{warn} #{incl} -c #{file}"
     end
 
     def to_s
