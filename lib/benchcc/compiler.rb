@@ -124,8 +124,8 @@ EOS
     # time: Path -> ::Benchmark.Tms
     #
     # Time the compilation of the given file.
-    def time(file)
-      stats = Utility.time { compile(file) }
+    def time(file, **opts)
+      stats = Utility.time(**opts) { compile(file) }
       stats.instance_variable_set(:@label, to_s)
       return stats
     end
@@ -134,11 +134,11 @@ EOS
     #
     # Equivalent to `time`, except the file is taken to be an ERB template
     # that is generated with the given environment before compiling.
-    def rtime(file, env)
+    def rtime(file, env, **opts)
       code = Utility.from_erb(file, env)
       hints = [File.basename(file), File.extname(file)]
       begin
-        return Tempfile.with(code, hints) { |tmp| time(tmp.path) }
+        return Tempfile.with(code, hints) { |tmp| time(tmp.path, **opts) }
       rescue CompilationError => e
         e.env = env
         raise e
