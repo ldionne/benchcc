@@ -1,6 +1,0 @@
-<%= "#include <boost/mpl11/detail/logical_or/#{which}.hpp>" %>
-
-
-<%= render('_main.erb') do |xs|
-    "boost::mpl11::detail::logical_or::#{which}<#{xs.join(',')}>"
-end %>

@@ -9,7 +9,7 @@ task :default => [:all]
 task :all
 
 INCLUDES = %w{boost.hana/include boost.mpl11/include}.map { |path|
-  File.expand_path("../../ext/#{path}", __FILE__)
+  "-I " + File.expand_path("../../ext/#{path}", __FILE__)
 }
 
 
@@ -28,7 +28,7 @@ Benchcc::Compiler.list.product(Dir['*']) do |compiler, dir|
         directory("_datasets/#{compiler.id}/#{benchmark}").name
     ].flatten do |ofile|
       data = bm.run(implementation) { |code|
-        compiler.compile_code(code, include: INCLUDES)
+        compiler.compile_code(code, *INCLUDES, "-fsyntax-only")
       }
 
       CSV.open(ofile.name, 'wb') do |csv|

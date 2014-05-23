@@ -1,1 +1,0 @@
-<%= render('_mpl11.erb', which: 'strict_is_same') %>

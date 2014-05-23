@@ -115,16 +115,15 @@ module Benchcc
     #
     # Compile the given file and return compilation statistics.
     #
-    # Additional include paths may be specified with the `include`
-    # named argument.
+    # Additional compiler-specific arguments may be specified.
     #
     # A `CompilationError` is be raised if the compilation fails for
     # whatever reason. Either this method or `compile_code` must be
     # implemented in subclasses.
-    def compile_file(file, include: [])
+    def compile_file(file, *args)
       raise ArgumentError, "invalid filename #{file}" unless File.file? file
       code = File.read(file)
-      compile_code(code, include: include)
+      compile_code(code, *args)
     end
 
     # compile_code: String -> CompilationStatistics
@@ -134,11 +133,11 @@ module Benchcc
     # This method has the same behavior as `compile_file`, except the code
     # is given as-is instead of being in a file. Either this method or
     # `compile_file` must be implemented in subclasses.
-    def compile_code(code, include: [])
+    def compile_code(code, *args)
       tmp = Tempfile.new(["", '.cpp'])
       tmp.write(code)
       tmp.close
-      compile_file(tmp.path, include: include)
+      compile_file(tmp.path, *args)
     ensure
       tmp.unlink
     end
@@ -157,10 +156,9 @@ module Benchcc
       raise "#{binary} not found" unless $?.success?
     end
 
-    def compile_file(file, include: [])
-      flags = "-std=c++1y -o /dev/null -fsyntax-only -ftime-report"
-      includes = include.map(&'-I '.method(:+)).join(' ')
-      cli = "#{@binary} #{flags} #{includes} -c #{file}"
+    def compile_file(file, *args)
+      flags = "-std=c++1y -o /dev/null -ftime-report"
+      cli = "#{@binary} #{args.join(' ')} #{flags} -c #{file}"
 
       _, stderr, status = Open3.capture3("/usr/bin/time -l #{cli}")
       raise CompilationError.new(cli, File.read(file), stderr) unless status.success?
