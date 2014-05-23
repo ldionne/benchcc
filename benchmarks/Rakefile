@@ -8,10 +8,9 @@ require 'gnuplot'
 task :default => [:all]
 task :all
 
-INCLUDES = %w{
-  boost.hana/include
-  boost.mpl11/include
-}.map { |path| File.expand_path(path, File.dirname(File.dirname(__FILE__))) }
+INCLUDES = %w{boost.hana/include boost.mpl11/include}.map { |path|
+  File.expand_path("../../ext/#{path}", __FILE__)
+}
 
 
 Benchcc::Compiler.list.product(Dir['*']) do |compiler, dir|
