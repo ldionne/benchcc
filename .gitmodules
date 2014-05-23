@@ -1,0 +1,6 @@
+[submodule "ext/boost.mpl11"]
+	path = ext/boost.mpl11
+	url = https://github.com/ldionne/mpl11.git
+[submodule "ext/boost.hana"]
+	path = ext/boost.hana
+	url = https://github.com/ldionne/hana.git

@@ -1,4 +1,4 @@
-require "benchcc/utility"
+require "benchcc/ext/numeric"
 
 require "rspec"
 

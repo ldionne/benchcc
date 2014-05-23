@@ -1,0 +1,4 @@
+<%= (0...breadth).map { |breadth|
+    xs = (0...depth).map { |n| "boost::mpl11::int_<#{n}>" }.join(', ')
+    "using go#{breadth} = sum<#{xs}>::type;"
+}.join("\n") %>

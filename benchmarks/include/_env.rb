@@ -1,0 +1,1 @@
+1.times.map { Hash.new }

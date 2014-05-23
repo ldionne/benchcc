@@ -1,0 +1,1 @@
+<%= render('_mpl11.erb', which: 'strict_constexpr_array') %>

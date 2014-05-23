@@ -1,25 +1,39 @@
-require "benchcc/utility"
+require 'open3'
+require 'tempfile'
 
 
 module Benchcc
   class CompilationError < RuntimeError
-    def initialize(command_line, file, env = nil)
+    def initialize(command_line, code, compiler_error_message)
       @cli = command_line
-      @code = File.read(file)
-      @env = env
+      @code = code
+      @compiler_stderr = compiler_error_message
     end
 
-    attr_accessor :env
-
     def to_s
-      env = "environment was #{@env}" if @env
       <<-EOS
-compilation failed when invoking "#{@cli}":
-#{env}
-#{'-' * 80}
-#{@code}
-#{'-' * 80}
-EOS
+  compilation failed when invoking "#{@cli}"
+  compiler error message was:
+  #{'-' * 80}
+  #{@compiler_stderr}
+
+  full compiled file was:
+  #{'-' * 80}
+  #{@code}
+  EOS
+    end
+  end
+
+  CompilationStatistics = Struct.new(:peak_memusg, :wall_time) do
+    def to_s
+  <<-EOS
+  maximum resident set size: #{peak_memusg} kb
+  wall time:                 #{wall_time} s
+  EOS
+    end
+
+    def to_hash
+      return {peak_memusg: peak_memusg, wall_time: wall_time}
     end
   end
 
@@ -27,10 +41,7 @@ EOS
   #
   # It also manages the registration of new compiler frontends. To register
   # a new compiler frontend, simply create a new instance of `Compiler`
-  # implementing the required methods (they are documented) and you are done.
-  #
-  # A default compiler frontend is provided; it is taken to have a GCC-like
-  # frontend and it uses the `cc` binary. This works at least on OS X 10.9.
+  # implementing the required methods (they are documented).
   class Compiler
     @@compilers = Hash.new
 
@@ -64,23 +75,11 @@ EOS
 
     # initialize: String or Symbol -> Compiler
     #
-    # Create and register a new compiler with the given id. If a block is
-    # given, `self` is yielded to it so the remaining attributes may be
-    # populated.
+    # Create and register a new compiler with the given id.
     def initialize(id)
       @id = id.to_sym
       Compiler[@id] = self
-      yield self if block_given?
     end
-
-    # id: Symbol
-    #
-    # A symbol uniquely identifying a given compiler.
-    #
-    # In most cases, it should be something carrying the name and the
-    # version of the compiler. For example, an identifier for Clang v3.5
-    # could be clang35.
-    attr_reader :id
 
     # Maximum template recursion depth supported by the compiler.
     # This must be set explicitly.
@@ -96,100 +95,109 @@ EOS
     end
     attr_writer :constexpr_depth
 
-    # cli: Path -> String
+    # id: Symbol
     #
-    # Return the command line needed to compile the given file.
-    # This must be implemented in subclasses.
-    def cli(file)
-      raise NotImplementedError
-    end
+    # A symbol uniquely identifying a given compiler.
+    #
+    # In most cases, it should be something carrying the name and the
+    # version of the compiler. For example, an identifier for Clang v3.5
+    # could be clang35.
+    attr_reader :id
 
     # Show the name and the version of the compiler.
+    #
     # This must be implemented in subclasses.
     def to_s
       raise NotImplementedError
     end
 
-    # compile: Path -> Nil
+    # compile_file: Path -> CompilationStatistics
     #
-    # Compile the given file.
+    # Compile the given file and return compilation statistics.
     #
-    # By default, executes the result of `cli(file)`. A `CompilationError`
-    # is raised if the compilation fails for whatever reason.
-    def compile(file)
-      `#{cli(file)}`
-      raise CompilationError.new(cli(file), file) unless $?.success?
+    # Additional include paths may be specified with the `include`
+    # named argument.
+    #
+    # A `CompilationError` is be raised if the compilation fails for
+    # whatever reason. Either this method or `compile_code` must be
+    # implemented in subclasses.
+    def compile_file(file, include: [])
+      raise ArgumentError, "invalid filename #{file}" unless File.file? file
+      code = File.read(file)
+      compile_code(code, include: include)
     end
 
-    # time: Path -> ::Benchmark.Tms
+    # compile_code: String -> CompilationStatistics
     #
-    # Time the compilation of the given file.
-    def time(file, **opts)
-      stats = Utility.time(**opts) { compile(file) }
-      stats.instance_variable_set(:@label, to_s)
-      return stats
-    end
-
-    # rtime: Path x Hash or OpenStruct -> ::Benchmark.Tms
+    # Compile the given string and return compilation statistics.
     #
-    # Equivalent to `time`, except the file is taken to be an ERB template
-    # that is generated with the given environment before compiling.
-    def rtime(file, env, **opts)
-      code = Utility.from_erb(file, env)
-      hints = [File.basename(file), File.extname(file)]
-      begin
-        return Tempfile.with(code, hints) { |tmp| time(tmp.path, **opts) }
-      rescue CompilationError => e
-        e.env = env
-        raise e
-      end
+    # This method has the same behavior as `compile_file`, except the code
+    # is given as-is instead of being in a file. Either this method or
+    # `compile_file` must be implemented in subclasses.
+    def compile_code(code, include: [])
+      tmp = Tempfile.new(["", '.cpp'])
+      tmp.write(code)
+      tmp.close
+      compile_file(tmp.path, include: include)
+    ensure
+      tmp.unlink
     end
   end # class Compiler
 
 
-  # Class for compilers with a GCC-like frontend.
+  # Helper for compilers with a GCC-like frontend.
   #
-  # This covers at least GCC and Clang.
+  # Basically, `compile_file` will return the stderr after running the compiler;
+  # subclasses then parse the compiler-specific output to retrieve time and
+  # memory usage statistics.
   class GccFrontend < Compiler
-    def initialize(id)
+    def initialize(id, binary)
       super id
-      @wflags = []
-      @includes = []
-      yield self if block_given?
+      @binary = `which #{binary}`.strip
+      raise "#{binary} not found" unless $?.success?
     end
 
-    # binary: String
-    #
-    # Path of the compiler binary on the system.
-    # This must be set explicitly.
-    attr_accessor :binary
+    def compile_file(file, include: [])
+      flags = "-std=c++1y -o /dev/null -fsyntax-only -ftime-report"
+      includes = include.map(&'-I '.method(:+)).join(' ')
+      cli = "#{@binary} #{flags} #{includes} -c #{file}"
 
-    # wflags: Strings (opt)
-    #
-    # Array of strings representing warning flags. For example,
-    # `gcc.wflags = %w{-Wall -Wextra -pedantic}`.
-    attr_accessor :wflags
-
-    # includes: Strings (opt)
-    #
-    # Array of strings representing include paths. For example,
-    # `gcc.includes = %w{~/my/lib/include /usr/local/include}`.
-    attr_accessor :includes
-
-    def cli(file)
-      incl = includes.map(&"-I ".method(:+)).join(" ")
-      warn = wflags.join(" ")
-      "#{binary} -o /dev/null -std=c++11 #{warn} #{incl} -c #{file}"
+      _, stderr, status = Open3.capture3("/usr/bin/time -l #{cli}")
+      raise CompilationError.new(cli, File.read(file), stderr) unless status.success?
+      return stderr
     end
 
     def to_s
-      `#{binary} --version`.lines.first.strip
+      `#{@binary} --version`.lines.first.strip
     end
-  end # class GccFrontend
-
-  GccFrontend.new :default do |cc|
-    cc.template_depth = 256   # these are complete guesses
-    cc.constexpr_depth = 256
-    cc.binary = "cc"
   end
-end # module Benchcc
+
+  class Clang < GccFrontend
+    def compile_file(*)
+      stderr = super
+      peak_memusg = stderr.match(/(\d+)\s+maximum/)[1].to_i
+      wall_time = stderr.match(/.+Total/).to_s.split[-3].to_f
+      return CompilationStatistics.new(peak_memusg, wall_time)
+    end
+
+    def template_depth;  256; end
+    def constexpr_depth; 512; end
+  end
+
+  class GCC < GccFrontend
+    def compile_file(*)
+      stderr = super
+      peak_memusg = stderr.match(/(\d+)\s+maximum/)[1].to_i
+      wall_time = stderr.match(/TOTAL.+/).to_s.split[-3].to_f
+      return CompilationStatistics.new(peak_memusg, wall_time)
+    end
+
+    def template_depth;  900; end
+    def constexpr_depth; 512; end
+  end
+
+  Clang.new(:apple51, 'clang')
+  Clang.new(:clang34, 'clang++-3.4')
+  Clang.new(:clang35, 'clang++-3.5')
+  GCC.new(:gcc49, 'g++-4.9')
+end

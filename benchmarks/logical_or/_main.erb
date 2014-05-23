@@ -1,0 +1,8 @@
+#define BOOST_MPL11_NO_ASSERTIONS
+#include <boost/mpl11/bool.hpp>
+
+
+<%= (0...breadth).map { |breadth|
+    xs = (0...depth-1).map { 'boost::mpl11::false_' } << 'boost::mpl11::true_'
+    "static_assert(#{yield xs}::value, \"\");"
+}.join("\n") %>
