@@ -2,9 +2,9 @@
 #include <boost/mpl11/list.hpp>
 
 
-<%= render('_puretype.erb') do |f, state, xs|
+<%= render('_main.erb') do |f, state, xs|
     cons = xs.foldr("boost::mpl11::list<>") { |x, tail|
       "boost::mpl11::cons<#{x}, #{tail}>"
     }
-    "boost::mpl11::foldl<#{f}, #{state}, #{cons}>"
+    "boost::mpl11::foldl<#{f}, #{state}, #{cons}>::type"
 end %>

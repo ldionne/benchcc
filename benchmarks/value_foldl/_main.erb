@@ -3,7 +3,8 @@ struct result { };
 
 constexpr struct {
     template <typename State, typename X>
-    constexpr result<State, X> operator()(State, X) const;
+    constexpr result<State, X> operator()(State, X) const
+    { return {}; }
 } f{};
 
 <%= (0...breadth).map { |breadth|

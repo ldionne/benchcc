@@ -4,7 +4,7 @@ struct result { using type = result; };
 struct f {
     using type = f;
     template <typename state, typename x>
-    using apply = result<typename state::type, typename x::type>;
+    using apply = typename result<typename state::type, typename x::type>::type;
 };
 
 
