@@ -5,23 +5,40 @@ require 'tempfile'
 
 module Benchcc
   class CompilationError < RuntimeError
-    def initialize(command_line, code, compiler_error_message)
-      @cli = command_line
-      @code = code
-      @compiler_stderr = compiler_error_message
-    end
+  end
 
+  # Structure holding various information about the compilation of a file.
+  CompilationResult = Struct.new('CompilationResult',
+    # The time taken to compile.
+    :wall_time,
+    # The peak memory usage during compilation.
+    :peak_memusg,
+    # The standard error produced during compilation.
+    :stderr,
+    # The standard output produced during compilation.
+    :stdout,
+    # The input source that was compiled.
+    :code,
+    # The command line used for compilation.
+    :command_line
+  ) do
     def to_s
       <<-EOS
-  compilation failed when invoking "#{@cli}"
-  compiler error message was:
-  #{'-' * 80}
-  #{@compiler_stderr}
+command line: #{command_line}
+compilation time: #{wall_time}
+peak memory usage: #{peak_memusg}
+#{'=' * 30} [begin code] #{'=' * 30}
+#{code}
+#{'=' * 30} [end code] #{'=' * 30}
 
-  full compiled file was:
-  #{'-' * 80}
-  #{@code}
-  EOS
+#{'=' * 30} [begin stdout] #{'=' * 30}
+#{stdout}
+#{'=' * 30} [end stdout] #{'=' * 30}
+
+#{'=' * 30} [begin stderr] #{'=' * 30}
+#{stderr}
+#{'=' * 30} [end stderr] #{'=' * 30}
+EOS
     end
   end
 
@@ -42,7 +59,7 @@ module Benchcc
       raise NotImplementedError
     end
 
-    # compile_file: Path -> Hash
+    # compile_file: Path -> CompilationResult
     #
     # Compile the given file and return compilation statistics.
     #
@@ -57,7 +74,7 @@ module Benchcc
       compile_code(code, *args)
     end
 
-    # compile_code: String -> Hash
+    # compile_code: String -> CompilationResult
     #
     # Compile the given string and return compilation statistics.
     #
@@ -84,12 +101,17 @@ module Benchcc
       file = Pathname.new(file).expand_path
       command = "time -l #{@exe} #{args.join(' ')} -ftime-report #{file}"
       stdout, stderr, status = Open3.capture3(command)
-      raise CompilationError.new(command, file.read, stderr) unless status.success?
 
-      return {
-        peak_memusg: stderr.match(/(\d+)\s+maximum/)[1].to_i,
-        wall_time: stderr.match(/.+Total/).to_s.split[-3].to_f
-      }
+      result = CompilationResult.new
+      result.stderr = stderr
+      result.stdout = stdout
+      result.code = file.read
+      result.command_line = command
+      raise CompilationError.new(result) unless status.success?
+
+      result.peak_memusg = stderr.match(/(\d+)\s+maximum/)[1].to_i
+      result.wall_time = stderr.match(/.+Total/).to_s.split[-3].to_f
+      return result
     end
 
     def template_depth;  256; end
@@ -106,12 +128,17 @@ module Benchcc
       file = Pathname.new(file).expand_path
       command = "time -l #{@exe} #{args.join(' ')} -ftime-report #{file}"
       stdout, stderr, status = Open3.capture3(command)
-      raise CompilationError.new(command, file.read, stderr) unless status.success?
 
-      return {
-        peak_memusg: stderr.match(/(\d+)\s+maximum/)[1].to_i,
-        wall_time: stderr.match(/TOTAL.+/).to_s.split[-3].to_f
-      }
+      result = CompilationResult.new
+      result.stderr = stderr
+      result.stdout = stdout
+      result.code = file.read
+      result.command_line = command
+      raise CompilationError.new(result) unless status.success?
+
+      result.peak_memusg = stderr.match(/(\d+)\s+maximum/)[1].to_i
+      result.wall_time = stderr.match(/TOTAL.+/).to_s.split[-3].to_f
+      return result
     end
 
     def template_depth;  900; end

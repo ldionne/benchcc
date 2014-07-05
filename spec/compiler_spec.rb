@@ -60,9 +60,7 @@ end
       }
 
       it('returns statistics on valid input') {
-        result = @cc.compile_file(@valid, '-o /dev/null')
-        expect(result).to have_key(:peak_memusg)
-        expect(result).to have_key(:wall_time)
+        expect(@cc.compile_file(@valid, '-o /dev/null')).to be_instance_of(Benchcc::CompilationResult)
       }
     end
   end
