@@ -1,5 +1,6 @@
-require "benchcc/benchmark"
-require "benchcc/compiler"
-require "benchcc/fusion"
-require "benchcc/mpl"
-require "benchcc/version"
+require 'benchcc/benchmark'
+require 'benchcc/compiler'
+require 'benchcc/fusion'
+require 'benchcc/mpl'
+require 'benchcc/plot'
+require 'benchcc/version'

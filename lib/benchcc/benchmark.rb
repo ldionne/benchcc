@@ -1,74 +1,53 @@
 require_relative 'compiler'
+require 'csv'
+require 'pathname'
 require 'ruby-progressbar'
 require 'tilt'
 require 'timeout'
 
 
 module Benchcc
-  class RenderHelper
-    def initialize(directory)
-      @directory = directory
+  class Renderer
+    def initialize(relative_to)
+      @relative_to = Pathname.new(relative_to)
       @locals = {}
     end
 
     def render(file, **locals, &block)
       @locals.merge!(locals)
-      Tilt::ERBTemplate.new("#{@directory}/#{file}").render(self, **@locals, &block)
+      file = Pathname.new(file).expand_path(@relative_to)
+      Tilt::ERBTemplate.new(file).render(self, **@locals, &block)
     end
   end
 
-  class Benchmark
-    def initialize(directory)
-      @directory = directory
-    end
-
-    def environments
-      @envs_ ||= eval(File.read("#{@directory}/_env.rb")).to_a
-    end
-
-    def implementations
-      @impls_ ||= Dir["#{@directory}/*.erb.cpp"].map { |file|
-        File.basename(file, '.erb.cpp')
-      }
-    end
-
-    def run(implementation, &compile)
-      if !implementations.include? implementation
-        raise ArgumentError, "unknown implementation #{implementation}"
-      end
-      renderer = RenderHelper.new(@directory)
-
-      3.times { # rehearse
-        code = renderer.render("#{implementation}.erb.cpp", **environments.first)
-        begin; compile.call(code); rescue CompilationError; end
-      } unless environments.empty?
-
+  def benchmark(file, envs, timeout: 10, relative_to: File.dirname(file), &block)
+    progress = ProgressBar.create(format: "#{file} %p%% | %B |",
+                                  total: envs.size)
+    consecutive_errors, data = 0, []
+    envs.each do |env|
+      break if consecutive_errors >= 2
+      code = Renderer.new(relative_to).render(file, **env)
       begin
-        progress = ProgressBar.create(
-          format: "#{@directory}/#{implementation} %p%% | %B |",
-          total: environments.size)
-        consecutive_errors, data = 0, []
-        environments.each do |env|
-          break if consecutive_errors >= 2
-          code = renderer.render("#{implementation}.erb.cpp", **env)
-          begin
-            Timeout::timeout(10) { data << env.merge(compile.call(code)) }
-            consecutive_errors = 0
-          rescue CompilationError, Timeout::Error => e
-            $stderr << e
-            consecutive_errors += 1
-          end
-          progress.increment
-        end
-        return data
-
-      ensure
-        progress.finish
+        Timeout::timeout(timeout) { data << env.merge(block.call(code)) }
+        consecutive_errors = 0
+      rescue CompilationError, Timeout::Error => e
+        $stderr << e
+        consecutive_errors += 1
       end
+      progress.increment
     end
+    return data
+  ensure
+      progress.finish
+  end
+  module_function :benchmark
 
-    def dependencies_of(implementation)
-      ["#{@directory}/#{implementation}.erb.cpp", "#{@directory}/_env.rb"]
+  def benchmark_to_csv(file, envs, out, timeout: 10, relative_to: File.dirname(file), &block)
+    data = benchmark(file, envs, timeout: timeout, relative_to: relative_to, &block)
+    CSV.open(out, 'wb') do |csv|
+      csv << data.first.keys unless data.empty?
+      data.each { |line| csv << line.values }
     end
   end
+  module_function :benchmark_to_csv
 end
