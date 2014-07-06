@@ -99,7 +99,7 @@ EOS
 
     def compile_file(file, *args)
       file = Pathname.new(file).expand_path
-      command = "time -l #{@exe} #{args.join(' ')} -ftime-report #{file}"
+      command = "/usr/bin/time -l #{@exe} #{args.join(' ')} -ftime-report #{file}"
       stdout, stderr, status = Open3.capture3(command)
 
       result = CompilationResult.new
@@ -126,7 +126,7 @@ EOS
 
     def compile_file(file, *args)
       file = Pathname.new(file).expand_path
-      command = "time -l #{@exe} #{args.join(' ')} -ftime-report #{file}"
+      command = "/usr/bin/time -l #{@exe} #{args.join(' ')} -ftime-report #{file}"
       stdout, stderr, status = Open3.capture3(command)
 
       result = CompilationResult.new
