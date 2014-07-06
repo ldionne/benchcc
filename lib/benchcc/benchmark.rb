@@ -28,7 +28,7 @@ module Benchcc
       break if consecutive_errors >= 2
       code = Renderer.new(relative_to).render(file, **env)
       begin
-        Timeout::timeout(timeout) { data << env.merge(block.call(code)) }
+        Timeout::timeout(timeout) { data << env.merge(block.call(code).to_h) }
         consecutive_errors = 0
       rescue CompilationError, Timeout::Error => e
         $stderr << e
@@ -42,9 +42,9 @@ module Benchcc
   end
   module_function :benchmark
 
-  def benchmark_to_csv(file, envs, out, timeout: 10, relative_to: File.dirname(file), &block)
+  def benchmark_to_csv(file, envs, timeout: 10, relative_to: File.dirname(file), &block)
     data = benchmark(file, envs, timeout: timeout, relative_to: relative_to, &block)
-    CSV.open(out, 'wb') do |csv|
+    return CSV.generate(headers: :first_row) do |csv|
       csv << data.first.keys unless data.empty?
       data.each { |line| csv << line.values }
     end
