@@ -1,7 +1,0 @@
-<%= (0...breadth).map { |breadth|
-    xs = (0...depth).map { |depth| "x#{breadth}<#{depth}>" }
-    <<-EOS
-    template <int> struct x#{breadth} { using type = x#{breadth}; };
-    #{yield xs, breadth, depth}
-    EOS
-}.join("\n") %>
