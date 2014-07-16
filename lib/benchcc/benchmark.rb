@@ -20,19 +20,17 @@ module Benchcc
     end
   end
 
-  def benchmark(file, envs, timeout: 10, relative_to: File.dirname(file), &block)
+  def benchmark(file, envs, timeout: 10, relative_to: File.dirname(file), stderr: $stderr, &block)
     progress = ProgressBar.create(format: "#{file} %p%% | %B |",
                                   total: envs.size)
-    consecutive_errors, data = 0, []
+    data = []
     envs.each do |env|
-      break if consecutive_errors >= 2
       code = Renderer.new(relative_to).render(file, **env)
       begin
         Timeout::timeout(timeout) { data << env.merge(block.call(code).to_h) }
-        consecutive_errors = 0
       rescue CompilationError, Timeout::Error => e
-        $stderr << e
-        consecutive_errors += 1
+        stderr << e
+        break
       end
       progress.increment
     end

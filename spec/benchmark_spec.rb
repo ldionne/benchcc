@@ -6,18 +6,18 @@ require 'timeout'
 
 
 describe Benchcc.method(:benchmark) do
-  it('should ignore timeouts') {
+  it('should stop on timeout') {
     timeout = 0.3
-    envs = [{time: timeout + 0.1}, {time: timeout - 0.1},
-            {time: timeout + 0.2}, {time: timeout - 0.2}]
+    envs = [{time: timeout - 0.1}, {time: timeout + 0.1}, {time: timeout - 0.2}]
     Tempfile.create('') do |file|
-      file.write('<%= time %>')
-      file.flush
-      data = Benchcc.benchmark(file.path, envs, timeout: timeout) do |code|
+      file.write('<%= time %>') && file.flush
+      devnull = File.open(File::NULL, 'w')
+
+      data = Benchcc.benchmark(file.path, envs, timeout: timeout, stderr: devnull) do |code|
         sleep(code.to_f)
         {time: code.to_f}
       end
-      expect(data).to eq(envs.select { |env| env[:time] < timeout })
+      expect(data).to eq(envs.take_while { |env| env[:time] < timeout })
     end
   }
 
