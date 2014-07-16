@@ -20,5 +20,5 @@ Gem::Specification.new do |s|
   s.add_dependency 'gnuplot', "~> 2.6"
   s.add_dependency 'rake', "~> 10.2"
   s.add_dependency 'ruby-progressbar', "~> 1.4"
-  s.add_dependency 'tilt', '~> 2.0.1'
+  s.add_dependency 'tilt', '~> 2.0'
 end
