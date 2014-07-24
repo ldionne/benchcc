@@ -34,16 +34,16 @@ describe Benchcc.method(:benchmark) do
   }
 end
 
-describe Benchcc.method(:benchmark_to_csv) do
+describe 'Benchcc.benchmark(...).to_csv' do
   it('should output to csv correctly') {
     envs = [{x: 1, y:-1}, {x: 2, y:-2}, {x: 3, y:-3}]
     Tempfile.create('') do |file|
       file.write('<%= x %> <%= y %>')
       file.flush
-      csv = Benchcc.benchmark_to_csv(file.path, envs) do |str|
+      csv = Benchcc.benchmark(file.path, envs) { |str|
         x, y = str.split(' ')
         {x: x.to_i, y: y.to_i}
-      end
+      }.to_csv
       expect(csv).to eq("x,y\n1,-1\n2,-2\n3,-3\n")
     end
   }
