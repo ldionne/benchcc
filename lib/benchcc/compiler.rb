@@ -24,20 +24,12 @@ module Benchcc
   ) do
     def to_s
       <<-EOS
-command line: #{command_line}
-compilation time: #{wall_time}
-peak memory usage: #{peak_memusg}
-#{'=' * 30} [begin code] #{'=' * 30}
-#{code}
-#{'=' * 30} [end code] #{'=' * 30}
-
-#{'=' * 30} [begin stdout] #{'=' * 30}
-#{stdout}
-#{'=' * 30} [end stdout] #{'=' * 30}
-
-#{'=' * 30} [begin stderr] #{'=' * 30}
+> #{command_line}
 #{stderr}
-#{'=' * 30} [end stderr] #{'=' * 30}
+
+[compiling:
+#{code}
+]
 EOS
     end
   end
@@ -110,7 +102,23 @@ EOS
       raise CompilationError.new(result) unless status.success?
 
       result.peak_memusg = stderr.match(/(\d+)\s+maximum/)[1].to_i
-      result.wall_time = stderr.match(/.+Total/).to_s.split[-3].to_f
+
+      section = -> (title) {
+        title.gsub!(' ', '\s')
+        /(
+            ===-+===\n
+            .*#{title}.*\n
+            ===-+===\n
+            (.|\n)+?(?====)
+        )|(
+            ===-+===\n
+            .*#{title}.*\n
+            ===-+===\n
+            (.|\n)+
+        )/x
+      }
+      result.wall_time = stderr.match(section["Miscellaneous Ungrouped Timers"])
+                               .to_s.match(/(\d+\.?\d+).+?Total/)[1]
       return result
     end
 

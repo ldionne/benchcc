@@ -30,16 +30,22 @@ describe Benchcc::Compiler do
 
   describe :guess_from_binary do
     it('can guess clang') {
-      expect(Benchcc::Compiler.guess_from_binary(`which clang`.strip)).to be_instance_of(Benchcc::Clang)
+      expect(
+        Benchcc::Compiler.guess_from_binary(`which clang`.strip)
+      ).to be_instance_of(Benchcc::Clang)
     }
 
     # GCC is aliased to clang on OSX, so this test fails.
     # it('can guess gcc') {
-    #   expect(Benchcc::Compiler.guess_from_binary(`which gcc`.strip)).to be_instance_of(Benchcc::GCC)
+    #   expect(
+    #     Benchcc::Compiler.guess_from_binary(`which gcc`.strip)
+    #   ).to be_instance_of(Benchcc::GCC)
     # }
 
     it('fails otherwise') {
-      expect { Benchcc::Compiler.guess_from_binary('not_a_compiler') }.to raise_error
+      expect {
+        Benchcc::Compiler.guess_from_binary('not_a_compiler')
+      }.to raise_error
     }
   end
 end
@@ -60,7 +66,9 @@ end
       }
 
       it('returns statistics on valid input') {
-        expect(@cc.compile_file(@valid, '-o /dev/null')).to be_instance_of(Benchcc::CompilationResult)
+        expect(
+          @cc.compile_file(@valid, '-o /dev/null')
+        ).to be_instance_of(Benchcc::CompilationResult)
       }
     end
   end
