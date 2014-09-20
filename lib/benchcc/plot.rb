@@ -24,7 +24,18 @@ module Benchcc
     }
   }
 
-  def plot(output, titles, inputs, x_feature: :input_size, y_feature: :compilation_time, &tweak)
+  # title:
+  #   The title used for the plot.
+  #
+  # output:
+  #   The name of the file in which the plot is written.
+  #
+  # curves:
+  #   An array of hashes of the form
+  #     { title: <curve title>, input: <data set file> }
+  #   representing the curves to draw on the plot.
+  def plot(title, output, curves, x_feature: :input_size, y_feature: :compilation_time, &tweak)
+    x_feature, y_feature = x_feature.to_sym, y_feature.to_sym
     raise ArgumentError if not Benchcc::Y_FEATURES.include?(y_feature)
     tweak ||= Benchcc::DEFAULT_TWEAK[y_feature]
 
@@ -32,10 +43,10 @@ module Benchcc
       Gnuplot::Plot.new(io) do |plot|
         plot.term     'png'
         plot.output   output
-        plot.data = titles.zip(inputs).map { |title, file|
-          csv = CSV.table(file)
+        plot.data = curves.map { |curve|
+          csv = CSV.table(curve[:input])
           Gnuplot::DataSet.new([csv[x_feature], csv[y_feature]]) { |ds|
-            ds.title = title
+            ds.title = curve[:title]
             ds.with = 'lines'
           }
         }

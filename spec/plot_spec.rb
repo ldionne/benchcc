@@ -18,8 +18,9 @@ describe 'plots' do
   describe Benchcc.method(:plot) do
     Benchcc::Y_FEATURES.each do |feature|
       it {
+        curves = [{title: 'curve title', input: @csv}]
         expect {
-          Benchcc.plot(@out, [''], [@csv], y_feature: feature)
+          Benchcc.plot('plot title', @out, curves, y_feature: feature)
         }.not_to raise_error
       }
     end
