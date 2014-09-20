@@ -1,3 +1,5 @@
+require_relative 'ext/string'
+
 require 'open3'
 require 'pathname'
 require 'tempfile'
@@ -74,7 +76,7 @@ module Benchcc
         }
 
       else
-        err_string = <<-EOS
+        err_string = <<-EOS.strip_heredoc
           > #{command}
           #{stderr}
 
@@ -106,7 +108,7 @@ module Benchcc
           memory_usage: memusg
         }
       else
-        err_string = <<-EOS
+        err_string = <<-EOS.strip_heredoc
           > #{command}
           #{stderr}
 
