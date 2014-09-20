@@ -41,6 +41,7 @@ module Benchcc
 
     Gnuplot.open do |io|
       Gnuplot::Plot.new(io) do |plot|
+        plot.title    title
         plot.term     'png'
         plot.output   output
         plot.data = curves.map { |curve|
