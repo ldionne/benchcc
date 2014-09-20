@@ -15,15 +15,13 @@ describe 'plots' do
     FileUtils.remove_entry(@tmpdir)
   end
 
-  describe Benchcc.method(:plot_memusg) do
-    it {
-      expect { Benchcc.plot_memusg(@out, @csv) }.not_to raise_error
-    }
-  end
-
-  describe Benchcc.method(:plot_time) do
-    it {
-      expect { Benchcc.plot_time(@out, @csv) }.not_to raise_error
-    }
+  describe Benchcc.method(:plot) do
+    Benchcc::Y_FEATURES.each do |feature|
+      it {
+        expect {
+          Benchcc.plot(@out, [''], [@csv], y_feature: feature)
+        }.not_to raise_error
+      }
+    end
   end
 end

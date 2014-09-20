@@ -6,28 +6,6 @@ require 'tempfile'
 
 
 describe Benchcc::Compiler do
-  describe :compile_file do
-    it {
-      class Mock < Benchcc::Compiler
-        def compile_code(code); code; end
-      end
-
-      file = Tempfile.new('')
-      file.write("whatever")
-      expect(Mock.new.compile_file(file.path)).to eq(file.read)
-    }
-  end
-
-  describe :compile_code do
-    it {
-      class Mock < Benchcc::Compiler
-        def compile_file(file); File.read(file); end
-      end
-
-      expect(Mock.new.compile_code("whatever")).to eq("whatever")
-    }
-  end
-
   describe :guess_from_binary do
     it('can guess clang') {
       expect(
@@ -58,17 +36,17 @@ end
       @valid = Pathname.new('src/valid.cpp').expand_path(File.dirname(__FILE__))
     }
 
-    describe :compile_file do
+    describe :compile do
       it('fails cleanly on invalid input') {
         expect {
-          @cc.compile_file(@invalid)
+          @cc.compile(@invalid)
         }.to raise_error(Benchcc::CompilationError)
       }
 
       it('returns statistics on valid input') {
         expect(
-          @cc.compile_file(@valid, '-o /dev/null')
-        ).to be_instance_of(Benchcc::CompilationResult)
+          @cc.compile(@valid, '-o /dev/null')
+        ).to be_instance_of(Hash)
       }
     end
   end

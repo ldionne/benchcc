@@ -1,50 +1,45 @@
 require 'benchcc/benchmark'
+require 'benchcc/compiler'
 
 require 'rspec'
 require 'tempfile'
-require 'timeout'
 
 
 describe Benchcc.method(:benchmark) do
+  it('should not throw') {
+    envs = [{input_size: 1}, {input_size: 2}]
+    Tempfile.create('') do |file|
+      expect {
+        data = Benchcc.benchmark(file.path, envs) do |file, env|
+          {
+            compilation_time: 'foo',
+            memory_usage: 'bar',
+            run_time: 'baz'
+          }
+        end
+      }.not_to raise_error
+    end
+  }
+
   it('should stop on timeout') {
-    timeout = 0.3
-    envs = [{time: timeout - 0.1}, {time: timeout + 0.1}, {time: timeout - 0.2}]
+    envs = [{input_size: 1}, {input_size: 2}]
     Tempfile.create('') do |file|
-      file.write('<%= time %>') && file.flush
-      devnull = File.open(File::NULL, 'w')
-
-      data = Benchcc.benchmark(file.path, envs, timeout: timeout, stderr: devnull) do |code|
-        sleep(code.to_f)
-        {time: code.to_f}
-      end
-      expect(data).to eq(envs.take_while { |env| env[:time] < timeout })
+      expect {
+        data = Benchcc.benchmark(file.path, envs, timeout: 0.1) do |file, env|
+          sleep(0.2)
+        end
+      }.not_to raise_error
     end
   }
 
-  it('should accumulate whatever is returned from the block') {
-    envs = [{x: 0}, {x: 1}, {x: 2}, {x: 3}]
+  it('should stop on CompilationError') {
+    envs = [{input_size: 1}, {input_size: 2}]
     Tempfile.create('') do |file|
-      file.write('<%= x %>')
-      file.flush
-      data = Benchcc.benchmark(file.path, envs) do |x|
-        {x: x.to_i}
-      end
-      expect(data).to eq(envs)
-    end
-  }
-end
-
-describe 'Benchcc.benchmark(...).to_csv' do
-  it('should output to csv correctly') {
-    envs = [{x: 1, y:-1}, {x: 2, y:-2}, {x: 3, y:-3}]
-    Tempfile.create('') do |file|
-      file.write('<%= x %> <%= y %>')
-      file.flush
-      csv = Benchcc.benchmark(file.path, envs) { |str|
-        x, y = str.split(' ')
-        {x: x.to_i, y: y.to_i}
-      }.to_csv
-      expect(csv).to eq("x,y\n1,-1\n2,-2\n3,-3\n")
+      expect {
+        data = Benchcc.benchmark(file.path, envs, timeout: 0.1) do |file, env|
+          raise Benchcc::CompilationError.new
+        end
+      }.not_to raise_error
     end
   }
 end
