@@ -3,7 +3,7 @@ require 'gnuplot'
 
 
 module Benchcc
-  Y_FEATURES = [:memory_usage, :compilation_time, :run_time]
+  Y_FEATURES = [:memory_usage, :compilation_time, :execution_time]
 
   # How do I make this private?
   DEFAULT_TWEAK = {
@@ -18,8 +18,8 @@ module Benchcc
       plot.format   'y \'%.2g s\''
     },
 
-    run_time: -> (plot) {
-      plot.ylabel   'Run time'
+    execution_time: -> (plot) {
+      plot.ylabel   'Execution time'
       plot.format   'y \'%.2g s\''
     }
   }
