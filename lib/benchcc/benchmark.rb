@@ -1,9 +1,9 @@
 require_relative 'compiler'
+
 require 'csv'
 require 'pathname'
 require 'ruby-progressbar'
 require 'tilt'
-require 'timeout'
 
 
 module Benchcc
@@ -20,31 +20,45 @@ module Benchcc
     end
   end
 
-  def benchmark(erb_file, environments, timeout: 10,
-                evaluate_erb_relative_to: File.dirname(erb_file), &bench)
+  def benchmark(
+      erb_file:, # String or Pathname
+      environments:, # Array of Hash
+      compilation_timeout:, # Int
+      execution_timeout:, # Int
+      evaluate_erb_relative_to:, # String or Pathname
+      features:, # Array of Symbol
+      compiler_executable:, # String
+      compiler_id:, # String
+      compiler_options: # Array of String
+    )
     erb_file = Pathname.new(erb_file)
     progress = ProgressBar.create(format: '%p%% | %B |', total: environments.size)
+    compiler = Benchcc::which(compiler_id)
 
     data = CSV.generate({headers: :first_row}) do |csv|
-      csv << [:input_size, :compilation_time, :memory_usage, :run_time]
+      csv << [:input_size] + features
 
       environments.each do |env|
         code = Renderer.new(evaluate_erb_relative_to).render(erb_file, **env)
         begin
+          row = {input_size: env[:input_size]}
           Tempfile.create([erb_file.basename, '.cpp']) do |tmp|
             tmp.write(code) && tmp.close
-            bench_data = Timeout::timeout(timeout) {
-              bench.call(tmp.path, env)
-            }
-            row = {
-              input_size: env[:input_size],
-              compilation_time: bench_data[:compilation_time],
-              memory_usage: bench_data[:memory_usage],
-              run_time: bench_data[:run_time] # TODO: implement this
-            }
-            csv << row
+
+            row.merge!(
+              compiler.call(
+                input_file: tmp.path,
+                features: features,
+                compiler_executable: compiler_executable,
+                compiler_options: compiler_options,
+                compilation_timeout: compilation_timeout,
+                execution_timeout: execution_timeout
+              )
+            )
           end
-        rescue CompilationError, Timeout::Error => e
+
+          csv << row
+        rescue ExecutionError, CompilationError, Timeout::Error => e
           $stderr << e
           break
         end

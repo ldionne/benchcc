@@ -2,52 +2,54 @@ require 'benchcc/compiler'
 
 require 'pathname'
 require 'rspec'
-require 'tempfile'
 
 
-describe Benchcc::Compiler do
-  describe :guess_from_binary do
-    it('can guess clang') {
-      expect(
-        Benchcc::Compiler.guess_from_binary(`which clang`.strip)
-      ).to be_instance_of(Benchcc::Clang)
-    }
-
-    # GCC is aliased to clang on OSX, so this test fails.
-    # it('can guess gcc') {
-    #   expect(
-    #     Benchcc::Compiler.guess_from_binary(`which gcc`.strip)
-    #   ).to be_instance_of(Benchcc::GCC)
-    # }
-
-    it('fails otherwise') {
-      expect {
-        Benchcc::Compiler.guess_from_binary('not_a_compiler')
-      }.to raise_error
-    }
-  end
-end
-
-[[Benchcc::Clang, 'clang++'], [Benchcc::GCC, 'g++']].each do |compiler, which|
-  describe compiler do
+[['Clang', 'clang++']].each do |compiler_id, executable|
+  describe compiler_id do
     before(:each) {
-      @cc = compiler.new(which)
+      @cc = Benchcc::which(compiler_id)
       @invalid = Pathname.new('src/invalid.cpp').expand_path(File.dirname(__FILE__))
+      @invalid_runtime = Pathname.new('src/invalid_runtime.cpp').expand_path(File.dirname(__FILE__))
       @valid = Pathname.new('src/valid.cpp').expand_path(File.dirname(__FILE__))
     }
 
-    describe :compile do
-      it('fails cleanly on invalid input') {
-        expect {
-          @cc.compile(@invalid)
-        }.to raise_error(Benchcc::CompilationError)
-      }
+    it('fails cleanly on invalid input') {
+      expect {
+        @cc.call(
+          input_file: @invalid,
+          features: [],
+          compiler_executable: executable,
+          compiler_options: [],
+          compilation_timeout: 10,
+          execution_timeout: 10
+        )
+      }.to raise_error(Benchcc::CompilationError)
+    }
 
-      it('returns statistics on valid input') {
-        expect(
-          @cc.compile(@valid, '-o /dev/null')
-        ).to be_instance_of(Hash)
-      }
-    end
+    it('fails cleanly on runtime error') {
+      expect {
+        @cc.call(
+          input_file: @invalid_runtime,
+          features: [:execution_time],
+          compiler_executable: executable,
+          compiler_options: [],
+          compilation_timeout: 10,
+          execution_timeout: 10
+        )
+      }.to raise_error(Benchcc::ExecutionError)
+    }
+
+    it('returns statistics on valid input') {
+      expect(
+        @cc.call(
+          input_file: @valid,
+          features: [:execution_time, :compilation_time, :memory_usage],
+          compiler_executable: executable,
+          compiler_options: ['-o/dev/null'],
+          compilation_timeout: 10,
+          execution_timeout: 10
+        )
+      ).to be_instance_of(Hash)
+    }
   end
 end
