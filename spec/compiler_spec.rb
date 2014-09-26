@@ -16,7 +16,7 @@ require 'rspec'
     it('fails cleanly on invalid input') {
       expect {
         @cc.call(
-          input_file: @invalid,
+          input_file: @invalid.to_s,
           features: [],
           compiler_executable: executable,
           compiler_options: [],
@@ -29,7 +29,7 @@ require 'rspec'
     it('fails cleanly on runtime error') {
       expect {
         @cc.call(
-          input_file: @invalid_runtime,
+          input_file: @invalid_runtime.to_s,
           features: [:execution_time],
           compiler_executable: executable,
           compiler_options: [],

@@ -17,6 +17,7 @@ module Benchcc
     def call(input_file:, features:, compiler_executable:, compiler_options:,
              compilation_timeout:, execution_timeout:)
       stats = {}
+      input_file = Pathname.new(input_file)
       Dir.mktmpdir do |tmp_dir|
         if features.include?(:compilation_time)
           compiler_options << '-ftime-report'
