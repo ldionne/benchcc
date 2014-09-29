@@ -20,7 +20,7 @@ module Benchcc
 
     execution_time: -> (plot) {
       plot.ylabel   'Execution time'
-      plot.format   'y \'%.2g s\''
+      plot.format   'y \'%.0f µs\''
     }
   }
 

@@ -45,7 +45,7 @@ require 'rspec'
           input_file: @valid,
           features: [:execution_time, :compilation_time, :memory_usage],
           compiler_executable: executable,
-          compiler_options: ['-o/dev/null'],
+          compiler_options: [],
           compilation_timeout: 10,
           execution_timeout: 10
         )

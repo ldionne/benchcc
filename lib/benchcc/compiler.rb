@@ -76,12 +76,12 @@ module Benchcc
         end
 
         if features.include?(:execution_time)
-          command = "/usr/bin/time #{tmp_dir}/a.out"
+          command = "#{tmp_dir}/a.out"
           stdout, stderr, status = Timeout::timeout(execution_timeout) {
             Open3.capture3(command)
           }
           if status.success?
-            time = stderr.match(/(\d+\.?\d*)\s+real/)[1]
+            time = stdout.match(/execution time: (\d+\.?\d*)/)[1]
             stats.merge!({execution_time: time})
           else
             raise ExecutionError.new(<<-EOS.strip_heredoc
