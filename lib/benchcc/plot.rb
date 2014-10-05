@@ -46,7 +46,19 @@ module Benchcc
         plot.output   output
         plot.data = curves.map { |curve|
           csv = CSV.table(curve[:input])
-          Gnuplot::DataSet.new([csv[x_feature], csv[y_feature]]) { |ds|
+          ys = csv[y_feature]
+          xs = csv[x_feature]
+
+          # Remove trailing nils from the y-axis. nils can arise when e.g.
+          # runtime execution failed but we still kept on gathering info
+          # for the compilation, so the execution_time column has some
+          # trailing empty values.
+          ys.pop until ys.last
+
+          # Restrict the x-axis to the number of valid y-axis values.
+          xs = xs[0...ys.size]
+
+          Gnuplot::DataSet.new([xs, ys]) { |ds|
             ds.title = curve[:title]
             ds.with = 'lines'
           }

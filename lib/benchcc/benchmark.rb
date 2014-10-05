@@ -57,12 +57,18 @@ module Benchcc
             )
           end
 
-          csv << row
-        rescue ExecutionError, CompilationError, Timeout::Error => e
+        rescue CompilationError, CompilationTimeout => e
           $stderr << e
           break
+
+        rescue ExecutionError, ExecutionTimeout => e
+          $stderr << e
+          break unless features.include?(:compilation_time) || features.include?(:memory_usage)
+
+        ensure
+          csv << row
+          progress.increment
         end
-        progress.increment
       end
     end
     return data

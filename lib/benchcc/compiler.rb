@@ -10,7 +10,13 @@ module Benchcc
   class CompilationError < RuntimeError
   end
 
+  class CompilationTimeout < RuntimeError
+  end
+
   class ExecutionError < RuntimeError
+  end
+
+  class ExecutionTimeout < RuntimeError
   end
 
   class Clang
@@ -34,7 +40,7 @@ module Benchcc
         end
 
         command = "#{compiler_executable} #{compiler_options.join(' ')} #{input_file}"
-        stdout, stderr, status = Timeout::timeout(compilation_timeout) {
+        stdout, stderr, status = Timeout::timeout(compilation_timeout, CompilationTimeout) {
           Open3.capture3(command)
         }
 
@@ -77,7 +83,7 @@ module Benchcc
 
         if features.include?(:execution_time)
           command = "#{tmp_dir}/a.out"
-          stdout, stderr, status = Timeout::timeout(execution_timeout) {
+          stdout, stderr, status = Timeout::timeout(execution_timeout, ExecutionTimeout) {
             Open3.capture3(command)
           }
           if status.success?
